@@ -1,4 +1,4 @@
-function convertMJ2(cFile,tFile, lowThresh, highThresh, gammaVal, imScale, imgSmooth)
+function convertMJ2(cFile,tFile, lowThresh, highThresh, gammaVal, imScale, imgSmooth, frameRate)
 %code to convert mj2 files into mp4. cFile is the path to the source mj2
 %file, tFile is the path to the target file. if tFIile is not given, it
 %will be the same as 'cFile' and just change the file extension.
@@ -6,7 +6,7 @@ function convertMJ2(cFile,tFile, lowThresh, highThresh, gammaVal, imScale, imgSm
 %of the video.
 
 cVid = VideoReader(cFile);
-nrFrames = (cVid.Duration * cVid.FrameRate);
+nrFrames = floor(cVid.Duration * cVid.FrameRate);
 
 if ~exist('tFile', 'var')
     tFile = strrep(cFile, '.mj2', '');
@@ -32,8 +32,13 @@ if ~exist('imgSmooth', 'var') || isempty(imgSmooth)
     imgSmooth = false;
 end
 
+if ~exist('frameRate', 'var') || isempty(frameRate)
+    frameRate = 60; %the default is 60 frames per second
+end
+
 v = VideoWriter(tFile, 'MPEG-4'); %save as compressed video file
 v.Quality = 100;
+v.FrameRate = frameRate;
 open(v);
 
 tic
