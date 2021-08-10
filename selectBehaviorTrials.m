@@ -49,14 +49,8 @@ for iFields = 1:size(bFields,1)
             bhv.(bFields{iFields}) = bhv.(bFields{iFields})(trials); %carry over selected trials
         else %some highD matrix, find trial dimension, cut trials and reshape to match original matrix
             cIdx = find(ismember(size(bhv.(bFields{iFields})), length(trials))); %find trial dimension
-            cSize = size(bhv.(bFields{iFields}));
-            cSize(cIdx) = sum(trials);
-            temp = reshape(bhv.(bFields{iFields}), sum(cSize(1:cIdx-1)), cSize(cIdx), []);
-            if cIdx == 1
-                bhv.(bFields{iFields}) = reshape(temp(trials,:),cSize);
-            else
-                bhv.(bFields{iFields}) = reshape(temp(:,trials,:),cSize);
-            end
+            bhv.(bFields{iFields}) = arrayIndex(bhv.(bFields{iFields}), trials, cIdx); %get index from target dimension
+            
         end
     end 
 end
