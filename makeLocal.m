@@ -4,9 +4,6 @@ function loadFile = makeLocal(fName, fPath, localPath)
 % fName in fPath if the copy doesnt exist already. It then returns the
 % filename which can be used to load the file.
 
-
-the file from there and create a copy if it doesnt exit.
-
 if ~exist('localPath', 'var') || isempty(localPath)
     loadFile = fullfile(fPath, fName);
 else
