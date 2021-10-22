@@ -13,7 +13,7 @@ for iTrials = 1 : size(StimData.VarVals,2)
 end
 
 %count unique cases
-caseIdx = zeros(size(StimData.VarVals,2), size(trialCases,2), 'single');
+caseIdx = zeros(size(StimData.VarVals,2), size(trialCases,2), 'logical');
 caseCnt = zeros(size(trialCases,2), 1, 'single');
 for iCases = 1 : size(trialCases,2)
     
