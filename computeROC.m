@@ -7,16 +7,16 @@ function [AUC, dPrime, hit, fa] =  computeROC(respA, respB, binEdges, showPlot)
 % illustrate how the ROC is generated.
 
 if ~exist('showPlot', 'var') || isempty(showPlot)
-    showPlot = false;
+    showPlot = true;
 end
 
 %% Example data
-% a = normrnd(10,1,1,1000);
-% b = normrnd(12,1,1,1000);
-% binEdges = 0:0.5:30;
-% 
-% respA = histcounts(a, binEdges);
-% respB = histcounts(b, binEdges);
+b = normrnd(10,1,1,1000);
+a = normrnd(25,1,1,1000);
+binEdges = 0:0.5:30;
+
+respA = histcounts(a, binEdges);
+respB = histcounts(b, binEdges);
 
 %% get ROC
 for i = 1:1:length(binEdges)

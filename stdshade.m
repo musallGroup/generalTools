@@ -28,14 +28,11 @@ amean = nanmean(amatrix,1); %get man over first dimension
 if smth > 1
     amean = boxFilter(nanmean(amatrix,1),smth); %use boxfilter to smooth data
 end
-astd = nanstd(amatrix,[],1); % to get std shading
-% astd = nanstd(amatrix,[],1)/sqrt(size(amatrix,1)); % to get sem shading
+% astd = nanstd(amatrix,[],1); % to get std shading
+astd = nanstd(amatrix,[],1)/sqrt(size(amatrix,1)); % to get sem shading
 
-if exist('alpha','var')==0 || isempty(alpha) 
-    fillOut = fill([F fliplr(F)],[amean+astd fliplr(amean-astd)],acolor,'linestyle','none');
-    acolor='k';
-else
-    fillOut = fill([F fliplr(F)],[amean+astd fliplr(amean-astd)],acolor, 'FaceAlpha', alpha,'linestyle','none');
+if ~exist('alpha','var') || isempty(alpha) 
+    alpha = 0;
 end
 
 if ishold==0
@@ -43,6 +40,19 @@ if ishold==0
 end
 
 hold on;
+
+segOn = find(diff(~isnan([NaN amean])) == 1);
+segOff = find(diff(~isnan([amean NaN])) == -1);
+fillOut = zeros(1, length(segOn));
+for iSegs = 1 : length(segOn)
+    cIdx = segOn(iSegs):segOff(iSegs);
+    fillOut(iSegs) = fill([F(cIdx) fliplr(F(cIdx))],[amean(cIdx)+astd(cIdx) fliplr(amean(cIdx)-astd(cIdx))],acolor, 'FaceAlpha', alpha,'linestyle','none');
+end
+
+if ~exist('alpha','var') || isempty(alpha) 
+    acolor = 'k';
+end
+    
 lineOut = plot(F,amean, 'color', acolor,'linewidth',1.5); %% change color or linewidth to adjust mean line
 
 if check
