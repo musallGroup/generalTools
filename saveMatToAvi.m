@@ -37,8 +37,12 @@ end
 [x,y]=meshgrid(-smth:smth,-smth:smth); % create gaussian filter based on flength and sigma
 Kernel= exp(-(x.^2+y.^2)/(2*sigma*sigma))/(2*pi*sigma*sigma);
 
-cMap = str2func(cMap);
-C = cMap(256);
+if isstr(cMap)
+    cMap = str2func(cMap);
+    C = cMap(256);
+else
+    C = cMap;
+end
 C(1,:) = [0 0 0]; %make lowest value black and reserve for Nan/Inf values
 
 v = VideoWriter([path fName]);
