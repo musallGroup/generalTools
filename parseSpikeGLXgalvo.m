@@ -24,3 +24,5 @@ galvoChanges = (galvoDiff < -minGalvoDiff);
 db = diff([0; single(galvoChanges(:))]);
 frameStarts = find(db<0);
 frameStarts = frameStarts + firstReal - 1;
+frameStarts = frameStarts([true; diff(frameStarts) > (median(diff(frameStarts)) / 2)]); %remove framestarts that are too close to eacher other
+
