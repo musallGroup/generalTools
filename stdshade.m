@@ -31,34 +31,44 @@ end
 % astd = nanstd(amatrix,[],1); % to get std shading
 astd = nanstd(amatrix,[],1)/sqrt(size(amatrix,1)); % to get sem shading
 
-if ~exist('alpha','var') || isempty(alpha) 
-    alpha = 0;
+if ~exist('alpha','var') || isempty(alpha)
+    alpha = 1;
 end
 
-if ishold==0
-    check=true; else check=false;
+% check if current axis is on hold
+check = false;
+if ~ishold
+    check=true;
 end
-
 hold on;
 
-segOn = find(diff(~isnan([NaN amean])) == 1);
-segOff = find(diff(~isnan([amean NaN])) == -1);
-fillOut = zeros(1, length(segOn));
-for iSegs = 1 : length(segOn)
-    cIdx = segOn(iSegs):segOff(iSegs);
-    fillOut(iSegs) = fill([F(cIdx) fliplr(F(cIdx))],[amean(cIdx)+astd(cIdx) fliplr(amean(cIdx)-astd(cIdx))],acolor, 'FaceAlpha', alpha,'linestyle','none');
-end
-
-if ~exist('alpha','var') || isempty(alpha) 
-    acolor = 'k';
-end
+if any(isnan(amean)) %make multiple patches if there are nans
+    nanIdx = find(isnan(amean));
+    nanIdx = [0 nanIdx];
     
+    for x = 1 : length(nanIdx)
+        if x ~= length(nanIdx)
+            cIdx = nanIdx(x)+1:nanIdx(x+1)-1; %data for current patch
+        else
+            cIdx = nanIdx(x)+1:length(amean); %data for current patch
+        end
+        
+        if ~isempty(cIdx)
+            cF = F(cIdx);
+            cM = amean(cIdx);
+            cE = astd(cIdx);
+            fillOut(x) = fill([cF fliplr(cF)],[cM+cE fliplr(cM-cE)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
+        end
+    end
+else
+    fillOut = fill([F fliplr(F)],[amean+astd fliplr(amean-astd)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
+end
+if alpha == 1; acolor='k'; end
 lineOut = plot(F,amean, 'color', acolor,'linewidth',1.5); %% change color or linewidth to adjust mean line
 
 if check
     hold off;
 end
-
 end
 
 

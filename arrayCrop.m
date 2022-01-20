@@ -30,6 +30,13 @@ end
 if dSize(1) > size(mask,1) || dSize(2) > size(mask,2)
     DataIn = DataIn(1:size(mask,1), 1:size(mask,2), :); %cut to size
 end
+if dSize(1) < size(mask,1)
+    DataIn(end+1:size(mask,1), :, :) = NaN; %add some NaNs
+end
+if dSize(2) < size(mask,2)
+    DataIn(:, end+1:size(mask,2), :) = NaN; %add some NaNs
+end
+   
 DataIn = reshape(DataIn,[numel(mask),prod(dSize(ndims(mask)+1:end))]); %merge x and y dimension based on mask size and remaining dimensions.
 mask = mask(:); %reshape mask to vector
 DataIn(mask,:) = [];
