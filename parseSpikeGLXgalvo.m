@@ -22,6 +22,15 @@ end
 
 galvoChanges = (galvoDiff < -minGalvoDiff);
 db = diff([0; single(galvoChanges(:))]);
+
+% make sure there is no contamination from individual datapoints passing
+% the threshold
+moveStart = find(db>0);
+frameStarts = find(db<0);
+idx = moveStart + 1 == frameStarts;
+db(moveStart(idx)+[0 1]) = 0;
+
+% find framestarts
 frameStarts = find(db<0);
 frameStarts = frameStarts + firstReal - 1;
 frameStarts = frameStarts([true; diff(frameStarts) > (median(diff(frameStarts)) / 2)]); %remove framestarts that are too close to eacher other
