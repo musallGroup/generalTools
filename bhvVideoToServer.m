@@ -34,6 +34,14 @@ for iSessions = 1 : length(cSessions)
     disp(['Current folder is ', cFolder]);
 
     if ~isfolder(targFolder)
+        % check if recording has been moved to a subfolder
+        folderCheck = dir([fullfile(targPath, 'Session Data\'), '*\' cSessions(iSessions).name]);
+        if ~isempty(folderCheck)
+            targFolder = folderCheck(1).folder;
+        end
+    end
+    
+    if ~isfolder(targFolder)
         disp('Current folder is missing on server. Uploading local data.');
         copyfile(cFolder, targFolder);
         disp('Copy complete. Removing videos from base folder...');
