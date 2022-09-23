@@ -2,11 +2,11 @@ function bhvVideoToTape(basePath, targPath)
 % Function to move behavioral data from bpod paradimgs into a tapedrive folder.
 % Will copy all data but only delete movies from the base folder.
 % basePath should point to the folder of a specific mouse/paradigm
-% combination (e.g. \\naskampa\BpodBehavior\F129\PuffyPenguin\)
+% combination (e.g. \\naskampa\DATA\BpodBehavior\F129\PuffyPenguin\)
 % if targPath is given it should match the formating of basePath to
 % identify where data should be copied to. Otherwise, the function assumes
 % that there is a folder ARCHIVE on the same server and will move data
-% there (e.g. \\naskampa\ARCHIVE\BpodBehavior\F129\PuffyPenguin\).
+% there (e.g. \\naskampa\DATA\ARCHIVE\BpodBehavior\F129\PuffyPenguin\).
 
 % basePath = '\\naskampa\DATA\BpodBehavior\F129\PuffyPenguin';
 % targPath = '\\naskampa\DATA\ARCHIVE\F129\PuffyPenguin';
