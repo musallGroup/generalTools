@@ -6,7 +6,7 @@ file_paths = cell(1, length(d));
 cnt = 0;
 for i = 1:length(d)
     if ~(strcmp(d(i).name, '.') || strcmp(d(i).name, '..'))
-        file_paths{i} = fullfile(d(i).folder, d(i).name);
+        file_paths{cnt+1} = fullfile(d(i).folder, d(i).name);
         cnt = cnt + 1;
     end
 end
