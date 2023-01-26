@@ -29,7 +29,7 @@ if smth > 1
     amean = boxFilter(nanmean(amatrix,1),smth); %use boxfilter to smooth data
 end
 % astd = nanstd(amatrix,[],1); % to get std shading
-astd = nanstd(amatrix,[],1)/sqrt(size(amatrix,1)); % to get sem shading
+astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
 
 if ~exist('alpha','var') || isempty(alpha)
     alpha = 1;
