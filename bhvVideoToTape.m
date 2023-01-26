@@ -39,22 +39,25 @@ end
 % find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
 cSessions = cSessions(~(ismember({cSessions.name}, '..') | ismember({cSessions.name}, '.')));
+cSessions = cSessions([cSessions.isdir]);
 disp(['Found ' num2str(length(cSessions)) ' Sessions in total. Moving data...']);
 for iSessions = 1 : length(cSessions)
     
     cFolder = fullfile(basePath, 'Session Data', cSessions(iSessions).name);
     targFolder = fullfile(targPath, 'Session Data', cSessions(iSessions).name);
     
-    fprintf('Current folder (%d/%d): %s\n', iSessions, length(cSessions), cFolder);
-    copyfile(cFolder, targFolder);
-    fprintf('Copy complete. Removing videos from base folder...');
-    
-    % check for video files and delete
-    cFiles = dir([cFolder filesep '*.avi']);
-    cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
-    cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
-    for iFiles = 1 : length(cFiles)
-        delete(fullfile(cFolder, cFiles(iFiles).name))
+    if ~isempty(dir([cFolder filesep '*' cSessions(iSessions).name '.mat']))
+        fprintf('Current folder (%d/%d): %s\n', iSessions, length(cSessions), cFolder);
+        copyfile(cFolder, targFolder);
+        fprintf('Copy complete. Removing videos from base folder...');
+        
+        % check for video files and delete
+        cFiles = dir([cFolder filesep '*.avi']);
+        cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
+        cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
+        for iFiles = 1 : length(cFiles)
+            delete(fullfile(cFolder, cFiles(iFiles).name))
+        end
+        fprintf(' Done.\n')
     end
-    fprintf(' Done.\n')
 end
