@@ -5,7 +5,7 @@ function bhvVideoToServer(basePath, targPath)
 % combination (e.g. E:\Bpod Local\Data\2482\PuffyPenguin\)
 % if targPath is given it should match the formating of basePath to
 % identify where data should be copied to. Otherwise, the function assumes
-% that there is a folder ARCHIVE on the same server and will move data
+% that there is a folder on the server and will move data
 % there (e.g. \\naskampa\DATA\BpodBehavior\F129\PuffyPenguin\).
 
 % basePath = 'E:\Bpod Local\Data\2482\PuffyPenguin';
