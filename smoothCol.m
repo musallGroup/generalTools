@@ -25,7 +25,7 @@ if ~exist('dim','var') || isempty(dim)
     dim = 1; %default is smoothing first dimension
 end
 
-if ~ismember(fType,{'box' 'gauss'})
+if ~ismember(fType,{'box' 'gauss' 'exp'})
     error('Unknown filter type. Use "box" or "gauss" for fType')
 end
 
@@ -66,11 +66,21 @@ if nansum(abs(dataIn(:))) > 0 %check if there is any data available
     elseif strcmpi(fType,'gauss') %gaussian filter
         fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
         if ~exist('fLength','var') || isempty(fLength)
-            fLength = round(fSig * 100); %length of total gaussian filter
+            fLength = round(fSig * 100); %length of gaussian filter
         end
         fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
         kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
+        kernel = kernel / norm(kernel); %normalize kernel
         dataOut = conv2(dataIn,kernel','same'); %smooth trace with gaussian
+        
+    elseif strcmpi(fType,'exp') %exponential filter
+        if ~exist('fLength','var') || isempty(fLength)
+            fLength = ceil(fWidth * 5);
+        end
+        kernel = exponentialFilter(fWidth, fLength);
+        kernel = [zeros(1, length(kernel)), kernel];
+        dataOut = conv2(dataIn,kernel','same'); %smooth trace with gaussian
+
     end
 else
     dataOut = dataIn;
@@ -80,4 +90,29 @@ dataOut = reshape(dataOut,[size(dataOut,1) dSize(dimOrder(2:end))]); %split dime
 dataOut = dataOut(fWidth+1:end-fWidth, : ,:); %remove buffers
 if dim ~= 1
     dataOut = ipermute(dataOut, dimOrder);
+end
+
+
+function kernel = exponentialFilter(decay_time, kernel_length)
+% Generate a 1D exponential filter kernel with specified decay time.
+% Decay time indicates after how many samples 1/e (37%) of the intial value
+% is reached
+
+% Compute the decay factor from the decay time
+alpha = exp(-1 / decay_time);
+
+% Generate the kernel values
+kernel = zeros(1, kernel_length);
+for t = 1:kernel_length
+    kernel(t) = alpha^(t-1);
+end
+
+% Normalize the kernel to have unit energy
+kernel = kernel / sum(kernel);
+
+% Adjust the kernel length if necessary to ensure that it sums to 1
+kernel_sum = sum(kernel);
+if abs(kernel_sum - 1) > eps
+    diff = 1 - kernel_sum;
+    kernel(end) = kernel(end) + diff;
 end
