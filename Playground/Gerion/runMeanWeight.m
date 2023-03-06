@@ -14,7 +14,9 @@ function [currAvg, new_k] = runMeanWeight(currAvg, newData, k, new_k)
 % new_k (int):  number of samples (e.g. trials) in new data
 
 % Match the shape of currAvg
-newData = reshape(newData, size(currAvg));
+if k > 0 && ~isempty(currAvg)
+    newData = reshape(newData, size(currAvg));
+end
 
 if isempty(k) && isempty(currAvg)
     % for the first value, simplifies use by passing empty array: []
