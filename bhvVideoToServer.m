@@ -17,11 +17,11 @@ if ~exist('targPath', 'var') || isempty(targPath)
     %assume that targPath is \\naskampa\data\BpodBehavoior\ as a default
     baseIdx = strfind(basePath, localString);
     baseIdx = baseIdx + length(localString);
-   
+    
     serverString = '\\naskampa\Data\BpodBehavior\'; %assume this is the server folder
     targPath = strrep(basePath, basePath(1:baseIdx), serverString);
 end
-    
+
 % find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
 cSessions = cSessions(~(ismember({cSessions.name}, '..') | ismember({cSessions.name}, '.')));
@@ -30,9 +30,9 @@ for iSessions = 1 : length(cSessions)
     
     cFolder = fullfile(basePath, 'Session Data', cSessions(iSessions).name);
     targFolder = fullfile(targPath, 'Session Data', cSessions(iSessions).name);
-        
+    
     disp(['Current folder is ', cFolder]);
-
+    
     if ~isfolder(targFolder)
         % check if recording has been moved to a subfolder
         folderCheck = dir([fullfile(targPath, 'Session Data\'), '*\' cSessions(iSessions).name]);
@@ -56,14 +56,30 @@ for iSessions = 1 : length(cSessions)
         sourceFile = fullfile(cFolder, cFiles(iFiles).name);
         targFile = fullfile(targFolder, cFiles(iFiles).name);
         
+        % check if file needs to be copied
         if ~exist(targFile, 'file')
             copyfile(sourceFile, targFile); %make sure there is a copy on the server
             fprintf('Copied local file %s to server\n', sourceFile);
         end
-
-        if exist(targFile, 'file')
+        
+        % check if file is broken
+        v1 = VideoReader(sourceFile);
+        v2 = VideoReader(targFile);
+        if v1.Duration ~= v2.Duration
+            copyfile(sourceFile, targFile); %make sure there is a copy on the server
+            fprintf('Copied local file %s to server\n', sourceFile);
+            
+            clear v2
+            v2 = VideoReader(targFile);
+        end
+        
+        % check if local file can be deleted
+        if exist(targFile, 'file') && v1.Duration == v2.Duration
             delete(sourceFile); %only delete local file if there is a copy on the server
             fprintf('Removed local file %s\n', sourceFile);
+        else
+            error('something very weird happened - something wrong with server communication or server full??');
         end
+        
     end
 end

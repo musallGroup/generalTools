@@ -5,14 +5,14 @@ function bhvVideoToTape(basePath, targPath)
 % combination (e.g. \\naskampa\DATA\BpodBehavior\F129\PuffyPenguin\)
 % if targPath is given it should match the formating of basePath to
 % identify where data should be copied to. Otherwise, the function assumes
-% that there is a folder ARCHIVE on the same server and will move data
-% there (e.g. \\naskampa\DATA\ARCHIVE\BpodBehavior\F129\PuffyPenguin\).
+% that there is a folder RAWDATA on the same server and will move data
+% there (e.g. \\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin\).
 
 % basePath = '\\naskampa\DATA\BpodBehavior\F129\PuffyPenguin';
-% targPath = '\\naskampa\DATA\ARCHIVE\F129\PuffyPenguin';
+% targPath = '\\naskampa\DATA\RAWDATA\F129\PuffyPenguin';
 
 if ~exist('targPath', 'var') || isempty(targPath)
-    %assume that targPath is a folder 'ARCHIVE' on the same folder as the basePath
+    %assume that targPath is a folder 'RAWDATA' on the same folder as the basePath
     baseIdx = strfind(basePath, filesep);
     
     % check if path is given with fileseperators (e.g. \\naskampa\data\).
@@ -24,7 +24,7 @@ if ~exist('targPath', 'var') || isempty(targPath)
         baseIdx = baseIdx(1);
     end
     
-    targServer = [basePath(1:baseIdx) 'ARCHIVE' filesep];
+    targServer = [basePath(1:baseIdx) 'RAWDATA' filesep];
     targPath = strrep(basePath, basePath(1:baseIdx), targServer);
 
     % check if folder exist. Throw a test dialog if needed.
