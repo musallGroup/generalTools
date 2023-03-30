@@ -1,6 +1,6 @@
 
 
-function [arrayShape, dataType, fortranOrder, littleEndian, totalHeaderLength, npyVersion] = readNPYheader(filename)
+function [arrayShape, dataType, fortranOrder, littleEndian, totalHeaderLength, npyVersion, nrVars] = readNPYheader(filename)
 % function [arrayShape, dataType, fortranOrder, littleEndian, ...
 %       totalHeaderLength, npyVersion] = readNPYheader(filename)
 %
@@ -47,7 +47,22 @@ try
     % assumptions about its format...
     
     r = regexp(arrayFormat, '''descr''\s*:\s*''(.*?)''', 'tokens');
-    dtNPY = r{1}{1};    
+    nrVars = 1;
+    
+    if isempty(r)
+        %check for multiple variables in the same file
+        r = regexp(arrayFormat, "'descr': (\[[^\]]*\])", 'tokens');
+        for x = 1 : length(dtypesNPY)
+            if contains(r{1}, dtypesNPY{x})
+                a = strfind(r{1}, dtypesNPY{x}); %how often is datatype mentioned
+                dtNPY = r{1}{1}(a{1}(1)-1 + (0:length(dtypesNPY{x}))); %get datatype
+                nrVars = length(a{1}); %how often is datatype mentioned
+            end
+        end
+    else
+        dtNPY = r{1}{1};
+    end
+    
     
     littleEndian = ~strcmp(dtNPY(1), '>');
     

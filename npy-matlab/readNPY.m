@@ -7,7 +7,7 @@ function data = readNPY(filename)
 % more.
 %
 
-[shape, dataType, fortranOrder, littleEndian, totalHeaderLength, ~] = readNPYheader(filename);
+[shape, dataType, fortranOrder, littleEndian, totalHeaderLength, ~, nrVars] = readNPYheader(filename);
 
 if littleEndian
     fid = fopen(filename, 'r', 'l');
@@ -20,11 +20,21 @@ try
     [~] = fread(fid, totalHeaderLength, 'uint8');
 
     % read the data
-    data = fread(fid, prod(shape), [dataType '=>' dataType]);
-
+    data = fread(fid, prod(shape)*nrVars, [dataType '=>' dataType]);
+    
+    if nrVars > 1
+        varIdx = reshape(1 : length(data), nrVars, []);
+        varIdx = reshape(varIdx', 1, []);
+        data = reshape(data(varIdx), [], nrVars);
+    end
+    
     if length(shape)>1 && ~fortranOrder
-        data = reshape(data, shape(end:-1:1));
-        data = permute(data, [length(shape):-1:1]);
+        data = reshape(data, [shape(end:-1:1), nrVars]);
+        if nrVars > 1
+            data = permute(data, [length(shape):-1:1, length(shape)+1]);
+        else
+            data = permute(data, length(shape):-1:1);
+        end
     elseif length(shape)>1
         data = reshape(data, shape);
     end
