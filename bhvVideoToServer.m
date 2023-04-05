@@ -47,10 +47,11 @@ for iSessions = 1 : length(cSessions)
         disp('Copy complete. Removing videos from base folder...');
     end
     
-    % check for video files and delete if there is a copy on the server
+    % check for video and widefield files and delete if there is a copy on the server
     cFiles = dir([cFolder filesep '*.avi']);
     cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
     cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
+    cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
     for iFiles = 1 : length(cFiles)
         
         sourceFile = fullfile(cFolder, cFiles(iFiles).name);
@@ -62,17 +63,24 @@ for iSessions = 1 : length(cSessions)
             fprintf('Copied local file %s to server\n', sourceFile);
         end
         
-        % check if file is broken
-        v1 = VideoReader(sourceFile);
-        v2 = VideoReader(targFile);
-        if v1.Duration ~= v2.Duration
-            copyfile(sourceFile, targFile); %make sure there is a copy on the server
-            fprintf('Copied local file %s to server\n', sourceFile);
-            
-            clear v2
+        % check if video file is broken
+        [~,~,fileType] = fileparts(cFiles(iFiles).name);
+        if ~strcmpi(fileType, '.dat') %dont do this for widefield data
+            v1 = VideoReader(sourceFile);
             v2 = VideoReader(targFile);
+            if v1.Duration ~= v2.Duration
+                copyfile(sourceFile, targFile); %make sure there is a copy on the server
+                fprintf('Copied local file %s to server\n', sourceFile);
+
+                clear v2
+                v2 = VideoReader(targFile);
+            end
+        else
+            clear v1 v2
+            v1.Duration = 0;
+            v2.Duration = 0;
         end
-        
+
         % check if local file can be deleted
         if exist(targFile, 'file') && v1.Duration == v2.Duration
             delete(sourceFile); %only delete local file if there is a copy on the server
@@ -80,6 +88,5 @@ for iSessions = 1 : length(cSessions)
         else
             error('something very weird happened - something wrong with server communication or server full??');
         end
-        
     end
 end
