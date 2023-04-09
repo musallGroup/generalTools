@@ -55,8 +55,9 @@ for iSessions = 1 : length(cSessions)
         cFiles = dir([cFolder filesep '*.avi']);
         cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
         cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
+        cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
         for iFiles = 1 : length(cFiles)
-            delete(fullfile(cFolder, cFiles(iFiles).name))
+            delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
         end
         fprintf(' Done.\n')
     end

@@ -65,7 +65,7 @@ for iSessions = 1 : length(cSessions)
         
         % check if video file is broken
         [~,~,fileType] = fileparts(cFiles(iFiles).name);
-        if ~strcmpi(fileType, '.dat') %dont do this for widefield data
+        if ~strcmpi(fileType, '.dat') && cFiles(iFiles).bytes > 0 %dont do this for widefield data or empty files
             v1 = VideoReader(sourceFile);
             v2 = VideoReader(targFile);
             if v1.Duration ~= v2.Duration
