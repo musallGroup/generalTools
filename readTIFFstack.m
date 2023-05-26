@@ -39,16 +39,22 @@ catch
 end
 
 % Read in each image until there are no more left
-image_data = zeros(size(testImage,1), size(testImage,2), nrFrames, class(testImage)); % Create an array with zeros to store image data
+image_data = zeros(numel(testImage), nrFrames, class(testImage)); % Create an array with zeros to store image data
+
 for k = 1 : nrFrames
     if useTiffobj
         t.setDirectory(k);
-        image_data(:,:,k) = t.read();
+        cImg = t.read();
+        image_data(:,k) = cImg(:);
     else
-        image_data(:,:,k) = imread(cFile, k);
+        cImg = imread(cFile, k);
+        image_data(:,k) = cImg(:);
     end
     
     if verbose && mod(k,100) == 0
         fprintf(1, '  image %d\n', k);
     end
 end
+
+image_data = reshape(image_data, [size(testImage), nrFrames]);
+
