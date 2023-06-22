@@ -1,4 +1,4 @@
-function result = GetGoogleSpreadsheet(DOCID)
+function result = GetGoogleSpreadsheet(DOCID, GID)
 % result = GetGoogleSpreadsheet(DOCID)
 % Download a google spreadsheet as csv and import into a Matlab cell array.
 %
@@ -15,9 +15,13 @@ function result = GetGoogleSpreadsheet(DOCID)
 % DM, Jan 2013
 %
 
-
 loginURL = 'https://www.google.com'; 
-csvURL = ['https://docs.google.com/spreadsheet/ccc?key=' DOCID '&output=csv&pref=2'];
+if exist('GID', 'var') && ~isempty(GID)
+    csvURL = sprintf('https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&sheet=%s',...
+        DOCID, GID);
+else
+    csvURL = ['https://docs.google.com/spreadsheet/ccc?key=' DOCID '&output=csv&pref=2'];
+end
 
 %Step 1: go to google.com to collect some cookies
 cookieManager = java.net.CookieManager([], java.net.CookiePolicy.ACCEPT_ALL);
