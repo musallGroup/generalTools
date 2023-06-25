@@ -12,6 +12,7 @@ try
 end
 ax.FontSize = 14;
 ax.TickDir = 'out';
+set(gca,'box','off')
 
 % children properties
 for x = 1 : length(ax.Children)
