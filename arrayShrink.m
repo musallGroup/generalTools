@@ -1,4 +1,4 @@
-function DataOut = arrayShrink(DataIn,mask,mode)
+function [DataOut, mask] = arrayShrink(DataIn,mask,mode)
 % Code to merge the first two dimensions of matrix 'DataIn' into one and remove
 % values based on the 2D index 'mask'. The idea here is that DataIn is a stack
 % of images with resolution X*Y and pixels in 'mask' should be removed to
@@ -48,14 +48,25 @@ function DataOut = arrayShrink(DataIn,mask,mode)
 % 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if ~exist('mode','var')
-    mode = 'merge'; %merge dimensions by default
-end
-
 dSize = size(DataIn); %size of input matrix
 if dSize(1) == 1
     DataIn = squeeze(DataIn); %remove singleton dimensions
     dSize = size(DataIn);
+end
+
+% get mask from data if its not assigned. Only makes sense when merging.
+if ~exist('mask','var') || isempty(mask)
+    mask = isnan(DataIn(:,:,1));
+    mode = 'merge'; %merge dimensions
+end
+mSize = size(mask);
+
+if ~exist('mode','var')
+    if isvector(DataIn)
+        mode = 'split'; %split dimensions if datain is a vector
+    else
+        mode = 'merge'; %merge dimensions by default
+    end
 end
 
 if length(dSize) == 2
@@ -68,6 +79,9 @@ end
 
 if strcmpi(mode,'merge') %merge x and y dimension into one
     
+    if dSize(1) > size(mask,1) || dSize(2) > size(mask,2)
+        DataIn = DataIn(1:size(mask,1), 1:size(mask,2), :); %cut to size
+    end        
     DataIn = reshape(DataIn,[numel(mask),prod(dSize(ndims(mask)+1:end))]); %merge x and y dimension based on mask size and remaining dimensions.
     mask = mask(:); %reshape mask to vector
     DataIn(mask,:) = [];
@@ -83,10 +97,10 @@ elseif strcmpi(mode,'split') %split first dimension into x- and y- dimension bas
         dType = 'double';
     end
     
-    mSize = size(mask);
     mask = mask(:); %reshape mask to vector
     DataOut = NaN([numel(mask) dSize(2:end)],dType); %pre-allocate new matrix
     DataOut(~mask,:) = reshape(DataIn,sum(~mask),[]);
     DataOut = reshape(DataOut,[mSize dSize(2:end)]);
   
 end
+mask = reshape(mask, mSize);
