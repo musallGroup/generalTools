@@ -48,7 +48,27 @@ for iSessions = 1 : length(cSessions)
     
     if ~isempty(dir([cFolder filesep '*' cSessions(iSessions).name '.mat']))
         fprintf('Current folder (%d/%d): %s\n', iSessions, length(cSessions), cFolder);
-        copyfile(cFolder, targFolder);
+    
+        % make a full copy if target folder doesnt exist.
+        % otherwise check if folder has been archieved already for individual files
+        if isempty(targFolder)
+            copyfile(cFolder, targFolder);
+        else
+            disp('Folder already exists - checking for non-archived files.')
+            %folder exists already check for non-archieved files
+            sourceFiles = dir(cFolder);
+            sourceFiles = {sourceFiles.name};
+            targFiles = dir(targFolder);
+            targFiles = strrep({targFiles.name}, '.p5c', ''); %archieved files
+
+            for iFiles = 1 : length(sourceFiles)
+                if ~any(strcmpi(targFiles, sourceFiles(iFiles)))
+                    cFile = fullfile(cFolder, sourceFiles{iFiles});
+                    targFile = fullfile(targFolder, sourceFiles{iFiles});
+                    copyfile(cFile, targFile);
+                end
+            end
+        end
         fprintf('Copy complete. Removing videos from base folder...');
         
         % check for video files and delete
