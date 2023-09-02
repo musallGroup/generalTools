@@ -51,13 +51,14 @@ for iSessions = 1 : length(cSessions)
     
         % make a full copy if target folder doesnt exist.
         % otherwise check if folder has been archieved already for individual files
-        if isempty(targFolder)
+        if exist(targFolder, 'dir') == 0
             copyfile(cFolder, targFolder);
         else
             disp('Folder already exists - checking for non-archived files.')
             %folder exists already check for non-archieved files
             sourceFiles = dir(cFolder);
             sourceFiles = {sourceFiles.name};
+            sourceFiles = sourceFiles(3:end);
             targFiles = dir(targFolder);
             targFiles = strrep({targFiles.name}, '.p5c', ''); %archieved files
 
@@ -65,10 +66,13 @@ for iSessions = 1 : length(cSessions)
                 if ~any(strcmpi(targFiles, sourceFiles(iFiles)))
                     cFile = fullfile(cFolder, sourceFiles{iFiles});
                     targFile = fullfile(targFolder, sourceFiles{iFiles});
+                    disp(cFile)
                     copyfile(cFile, targFile);
+                    fprintf('Copied file %.0f/%.0f\n', iFiles, length(sourceFiles))
                 end
             end
         end
+
         fprintf('Copy complete. Removing videos from base folder...');
         
         % check for video files and delete
