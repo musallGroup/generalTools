@@ -36,7 +36,7 @@ if ~exist('targPath', 'var') || isempty(targPath)
     end
 end
     
-% find sessions
+%% find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
 cSessions = cSessions(~(ismember({cSessions.name}, '..') | ismember({cSessions.name}, '.')));
 cSessions = cSessions([cSessions.isdir]);
