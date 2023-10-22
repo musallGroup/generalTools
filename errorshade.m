@@ -86,6 +86,6 @@ dataStart = dataStart(1:2:end) ./ (1:2:(fWidth-2));
 dataEnd = cumsum(dataIn(length(dataIn):-1:length(dataIn)-fWidth+3),2);
 dataEnd = dataEnd(end:-2:1) ./ (fWidth-2:-2:1);
 dataOut = conv(dataIn,ones(fWidth,1)/fWidth,'full');
-dataOut = [dataStart,dataOut(fWidth:end-fWidth+1),dataEnd];
+dataOut = [dataStart;dataOut(fWidth:end-fWidth+1);dataEnd];
 
 end

@@ -1,6 +1,6 @@
 function stats_str = get_significance_str(p)
 if ~isnumeric(p)
-    warning('Input is not numveric!');
+    warning('Input is not numeric!');
     stats_str = 'n.a.';
     return
 end

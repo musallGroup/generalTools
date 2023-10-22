@@ -4,15 +4,16 @@ function cLine = arrayPlot(amatrix,varargin)
 % inputs that are compatible with the 'plot' command can be provided.
 % usage: cLine = arrayPlot(amatrix,varargin)
 
+% plot individual columns
+cLine = plot(amatrix, varargin{:});
+
+% check if hold is already on
 a = gca;
 if ishold(a)
     checker = true;
 else
     hold(a,'on'); checker = false;
 end
-
-% plot individual columns
-cLine = plot(amatrix, varargin{:});
 
 % get color and linewidth
 cLineWidth = cLine(1).LineWidth;
@@ -25,7 +26,6 @@ end
 % show mean over all columns
 cLine = plot(nanmean(amatrix,2), varargin{:}, 'linewidth', cLineWidth * 4);
   
-    
 if ~checker
     hold(a,'off');
 end
