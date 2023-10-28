@@ -23,11 +23,11 @@ end
 
 if fLength > 1
     if type == 1
-        Kernel = ones(fLength,fLength); % Create box filter based on flength
-        Kernel = Kernel ./ fLength^2;
-    elseif type == 2
         [x,y]=meshgrid(-fLength:fLength,-fLength:fLength); % create gaussian filter based on flength and sigma
         Kernel= exp(-(x.^2+y.^2)/(2*sigma*sigma))/(2*pi*sigma*sigma);
+    elseif type == 2
+        Kernel = ones(fLength,fLength); % Create box filter based on flength
+        Kernel = Kernel ./ fLength^2;
     end
     DataOut = conv2(double(DataIn), Kernel, 'same'); %convolve original matrix with filter
 else
