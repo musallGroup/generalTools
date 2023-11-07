@@ -49,7 +49,7 @@ dataIn = cat(1,cbegin,dataIn,cend);
 
 dataIn = reshape(dataIn,size(dataIn,1), []); %merge other dimensions for smoothing
 
-if nansum(abs(dataIn(:))) > 0 %check if there is any data available
+if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
     if ~strcmpi(class(dataIn),'double') %make sure data is double
         dataIn = double(dataIn);
     end
