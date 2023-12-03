@@ -24,7 +24,7 @@ if ne(size(F,1),1)
     F=F';
 end
 
-amean = nanmedian(amatrix,1); %get man over first dimension
+amean = nanmean(amatrix,1); %get man over first dimension
 if smth > 1
     amean = boxFilter(amean,smth); %use boxfilter to smooth data
 end
