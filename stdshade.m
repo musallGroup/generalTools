@@ -1,5 +1,5 @@
 function [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth)
-% usage: stdshading(amatrix,alpha,acolor,F,smth)
+% usage: [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth)
 % plot mean and sem/std coming from a matrix of data, at which each row is an
 % observation. sem/std is shown as shading.
 % - acolor defines the used color (default is red) 
@@ -24,7 +24,7 @@ if ne(size(F,1),1)
     F=F';
 end
 
-amean = nanmean(amatrix,1); %get man over first dimension
+amean = nanmedian(amatrix,1); %get man over first dimension
 if smth > 1
     amean = boxFilter(amean,smth); %use boxfilter to smooth data
 end
