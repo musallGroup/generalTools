@@ -56,6 +56,7 @@ if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
     
     if strcmpi(fType,'box') %box filter
         n = size(dataIn,1);
+        fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
         cbegin = cumsum(dataIn(1:fWidth-2,:),1);
         cbegin = bsxfun(@rdivide, cbegin(1:2:end,:), (1:2:(fWidth-2))');
         cend = cumsum(dataIn(n:-1:n-fWidth+3,:),1);

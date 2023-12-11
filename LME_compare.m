@@ -14,7 +14,7 @@ cGroups = cGroups(:);
 
 % combine into one table and create model
 tbl = table(cData, cStims, cGroups, 'VariableNames',{'cData','cStims','cGroups'});
-fullmodel = fitlme(tbl,'cData ~ cStims + (1|cGroups)');
+fullmodel = fitlme(tbl,'cData ~ cStims + (1 |cGroups)');
 nullmodel = fitlme(tbl,'cData ~ 1 + (1|cGroups)');
 
 % Test the significance of the fixed effect 'cStims'

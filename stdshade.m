@@ -1,19 +1,24 @@
-function [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth)
-% usage: [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth)
+function [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth,avgType)
+% usage: [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth,avgType)
 % plot mean and sem/std coming from a matrix of data, at which each row is an
 % observation. sem/std is shown as shading.
 % - acolor defines the used color (default is red) 
 % - F assignes the used x axis (default is steps of 1).
 % - alpha defines transparency of the shading (default is no shading and black mean line)
 % - smth defines the smoothing factor (default is no smooth)
+% - avgType defines the type of averaging. Either 'mean' or 'median'.
 % smusall 2010/4/23
 
 if exist('acolor','var')==0 || isempty(acolor)
     acolor='r'; 
 end
 
-if exist('F','var')==0 || isempty(F)
-    F=1:size(amatrix,2);
+if exist('acolor','var')==0 || isempty(acolor)
+    acolor='r'; 
+end
+
+if exist('avgType','var')==0 || isempty(avgType)
+   avgType = 'mean';
 end
 
 if exist('smth','var'); if isempty(smth); smth=1; end
@@ -24,7 +29,14 @@ if ne(size(F,1),1)
     F=F';
 end
 
-amean = nanmean(amatrix,1); %get man over first dimension
+if strcmpi(avgType, 'mean')
+    amean = nanmean(amatrix,1); %get man over first dimension
+elseif strcmpi(avgType, 'median')
+    amean = nanmedian(amatrix,1); %get man over first dimension
+else
+    error('unknown average type');
+end
+
 if smth > 1
     amean = boxFilter(amean,smth); %use boxfilter to smooth data
 end

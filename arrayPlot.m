@@ -4,11 +4,11 @@ function cLine = arrayPlot(amatrix,varargin)
 % inputs that are compatible with the 'plot' command can be provided.
 % usage: cLine = arrayPlot(amatrix,varargin)
 
-%check if first unput is for x-axis
-if size(amatrix,1) == size(varargin{1},1)
-xAxis = amatrix;
-amatrix = varargin{1};
-varargin = varargin(2:end);
+%check if first input is for x-axis
+if ~isempty(varargin) && numel(amatrix) == size(varargin{1},1)
+    xAxis = amatrix;
+    amatrix = varargin{1};
+    varargin = varargin(2:end);
 else
     xAxis = 1 : size(amatrix,1);
 end
