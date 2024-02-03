@@ -5,11 +5,15 @@ function [pVal_cStim, tStat_cStim, fullmodel, modelCompare] = LME_compare(dataIn
 % controlling for the role of randomVar in a reduced model.
 % SM 03.12.2023
 
+%make sure inputs are column vectors
+dataIn1 = double(dataIn1(:));
+dataIn2 = double(dataIn2(:));
+
 % create linear midex-effect model with 1 fixed and 1 random variable.
 cStims = repmat(1:2, size(dataIn1,1), 1); %index for the two test variables
 cStims = cStims(:);
 cData = cat(1, dataIn1(:), dataIn2(:)); %combine both inputs into 1 vector
-cGroups = repmat(randomVar(:), 2, 1); %random grouping variable
+cGroups = repmat(double(randomVar(:)), 2, 1); %random grouping variable
 cGroups = cGroups(:);
 
 % combine into one table and create model

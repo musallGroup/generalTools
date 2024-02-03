@@ -21,6 +21,10 @@ if exist('avgType','var')==0 || isempty(avgType)
    avgType = 'mean';
 end
 
+if exist('F','var')==0 || isempty(F)
+   F = 1:size(amatrix,1);
+end
+
 if exist('smth','var'); if isempty(smth); smth=1; end
 else smth=1; %no smoothing by default
 end  
