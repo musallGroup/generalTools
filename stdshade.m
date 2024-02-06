@@ -35,17 +35,29 @@ end
 
 if strcmpi(avgType, 'mean')
     amean = nanmean(amatrix,1); %get man over first dimension
+    % astd = nanstd(amatrix,[],1); % to get std shading
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+    end
+    astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
+    astdHigh = amean + astd; %get SEM above mean
+    astdLow = amean - astd; %get SEM below mean
+    
 elseif strcmpi(avgType, 'median')
-    amean = nanmedian(amatrix,1); %get man over first dimension
+%     amean = nanmedian(amatrix,1); %get man over first dimension
+    amean = prctile(amatrix,50,1); %get median as 50th prctile
+    
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+    end
+    astdHigh = prctile(amatrix,75,1); %upper shading range
+    astdLow = prctile(amatrix,25,1); %lower shading range
+
 else
     error('unknown average type');
 end
 
-if smth > 1
-    amean = boxFilter(amean,smth); %use boxfilter to smooth data
-end
-% astd = nanstd(amatrix,[],1); % to get std shading
-astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
+
 
 if ~exist('alpha','var') || isempty(alpha)
     alpha = 1;
@@ -72,12 +84,13 @@ if any(isnan(amean)) %make multiple patches if there are nans
         if ~isempty(cIdx)
             cF = F(cIdx);
             cM = amean(cIdx);
-            cE = astd(cIdx);
-            fillOut(x) = fill([cF fliplr(cF)],[cM+cE fliplr(cM-cE)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
+            cEupper = astdHigh(cIdx);
+            cElower = astdLow(cIdx);
+            fillOut(x) = fill([cF fliplr(cF)],[cEupper fliplr(cElower)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
         end
     end
 else
-    fillOut = fill([F fliplr(F)],[amean+astd fliplr(amean-astd)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
+    fillOut = fill([F fliplr(F)],[astdHigh fliplr(astdLow)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
 end
 if alpha == 1; acolor='k'; end
 lineOut = plot(F,amean, 'color', acolor,'linewidth',1.5); %% change color or linewidth to adjust mean line
