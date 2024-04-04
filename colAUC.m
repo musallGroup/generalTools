@@ -1,4 +1,4 @@
-function [auc, labels] = colAUC(X, y, varargin)
+function [auc, labels, pVals] = colAUC(X, y, varargin)
 %COLAUC calculates Area under ROC curve (AUC) for a vector or for each
 % column of a matrix.
 %
@@ -102,7 +102,7 @@ if (nargout==0), Plot = true; alg = 'ROC'; end
 switch alg
   case 'ROC'
     alg = 'ROC';
-  case {'Wilcoxon', 'Mann–Whitney U', 'Mann–Whitney–Wilcoxon', 'ranksum'}
+  case {'Wilcoxon', 'Mannï¿½Whitney U', 'Mannï¿½Whitneyï¿½Wilcoxon', 'ranksum'}
     alg = 'Wilcoxon';
   otherwise
     alg = 'Wilcoxon';
@@ -134,6 +134,7 @@ L        = uL(ones(nr,1),:);
 np       = size(per,1);              % how many possible pairs were found?
 auc      = zeros(np,nc)+0.5;         % Initialize array to store results
 rowLabel = cell(1,np);
+pVals    = zeros(np,nc);         % Initialize array to store significance. Only available for Wilcoxon test.
 
 %% prepare the plot, if needed
 if (Plot)
@@ -195,9 +196,13 @@ switch alg
         n1 = length(x1);
         n2 = length(x2);
         if (n1>0 && n2>0)
-          r = avrRank([x1(:); x2(:)]);
-          U = sum(r(1:n1)) - n1*(n1+1)/2; % Wilcoxon rank-sum test or Mann–Whitney U test
-          auc(i,c) = U / (n1*n2);
+%           r = avrRank([x1(:); x2(:)]);
+%           U = sum(r(1:n1)) - n1*(n1+1)/2; % Wilcoxon rank-sum test or Mannï¿½Whitney U test
+%           auc(i,c) = U / (n1*n2);
+          
+          % changed this part to get significance
+          [pVals(i,c),~,stats] = ranksum(x1,x2);
+          auc(i,c) = (stats.ranksum - n1*(n1+1)/2) / (n1*n2);
         end
       end % end of 'for i' looplength(
     end % end of 'for j' loop

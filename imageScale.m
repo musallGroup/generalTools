@@ -16,7 +16,7 @@ end
 if twoSided
     cRange = [-cRange cRange];
 else
-    cRange = [0 cRange];
+    cRange = [prctile(cMap(:),2.5) prctile(cMap(:),97.5)];
 end
 
 mapImg = imshow(squeeze(cMap),cRange);

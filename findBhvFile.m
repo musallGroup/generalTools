@@ -6,11 +6,11 @@ function bhvFiles = findBhvFile(bhvPath)
 bhvFiles = dir(fullfile(bhvPath,'*.mat'));
 fileSelect = false(1, length(bhvFiles));
 for iFiles = 1 : length(bhvFiles)
-    
-   cFile = fullfile(bhvPath, bhvFiles(iFiles).name);
-   a = whos('-file', cFile);
-   fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
-       
+    try
+        cFile = fullfile(bhvPath, bhvFiles(iFiles).name);
+        a = whos('-file', cFile);
+        fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
+    end
 end
 
 if sum(fileSelect) == 0

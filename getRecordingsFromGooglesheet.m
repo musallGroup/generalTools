@@ -8,13 +8,15 @@ if isfield(opts, 'gid')
 else
     expTable = GetGoogleSpreadsheet(opts.docid);
 end
+expTable = expTable(:, ~cellfun(@isempty,expTable(1,:))); %only use columns with valid header
 
 optsFields = fieldnames(opts)';
 rowSelectIdx = true(size(expTable,1), 1);
+rowSelectIdx(1) = false;
 for iChecks = 1 : length(expTable(1,:))
     checkIdx = ismember(optsFields, expTable{1, iChecks});
     
-    if sum(checkIdx) > 0
+    if sum(checkIdx) > 0 && ~isempty(opts.(optsFields{checkIdx}))
         cIdx = contains(expTable(1,:), optsFields{checkIdx});
         cData = expTable(:,cIdx);
         cData = cellfun(@(x) strtrim(x), cData, 'UniformOutput', false); %make sure there are no spaces at the beginning or the ened of the string
