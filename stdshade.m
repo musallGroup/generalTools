@@ -22,7 +22,7 @@ if exist('avgType','var')==0 || isempty(avgType)
 end
 
 if exist('F','var')==0 || isempty(F)
-   F = 1:size(amatrix,1);
+   F = 1:size(amatrix,2);
 end
 
 if exist('smth','var'); if isempty(smth); smth=1; end
