@@ -25,6 +25,7 @@ end
 % find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
 cSessions = cSessions(~(ismember({cSessions.name}, '..') | ismember({cSessions.name}, '.')));
+cSessions = cSessions([cSessions.isdir]);
 disp(['Found ' num2str(length(cSessions)) ' Sessions in total. Moving data...']);
 for iSessions = 1 : length(cSessions)
     
