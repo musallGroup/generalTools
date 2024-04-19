@@ -1,4 +1,4 @@
-function bhvVideoToServer(basePath, targPath)
+function bhvVideoToServer(basePath, targPath, checkTape)
 % Function to move behavioral data from bpod paradimgs from local PC to the
 % server. Will copy all data but only delete movies from the base folder.
 % basePath should point to the folder of a specific mouse/paradigm
@@ -7,9 +7,15 @@ function bhvVideoToServer(basePath, targPath)
 % identify where data should be copied to. Otherwise, the function assumes
 % that there is a folder on the server and will move data
 % there (e.g. \\naskampa\DATA\BpodBehavior\F129\PuffyPenguin\).
+% If checkTape is true, files are only covered if they are not on the tape
+% drive already.
 
 % basePath = 'E:\Bpod Local\Data\2482\PuffyPenguin';
 % targPath = '\\naskampa\DATA\BpodBehavior\2482\PuffyPenguin\';
+
+if ~exist('checkTape' , 'var') || isempty(checkTape)
+    checkTape = false;
+end
 
 if ~exist('targPath', 'var') || isempty(targPath)
     localString = 'Bpod Local\Data'; %assume this is the local folder
@@ -53,37 +59,46 @@ for iSessions = 1 : length(cSessions)
     cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
     cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
     cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
+    
+    %folder exists already check for non-archieved files
+    tapeFolder = strrep(targFolder, 'BpodBehavior', 'RAWDATA\BpodBehavior');
+    tapeFiles = dir(tapeFolder);
+    tapeFiles = tapeFiles(3:end);
+    tapeFiles = strrep({tapeFiles.name}, '.p5c', ''); %archieved files
+
     for iFiles = 1 : length(cFiles)
         
         sourceFile = fullfile(cFolder, cFiles(iFiles).name);
         targFile = fullfile(targFolder, cFiles(iFiles).name);
-        
-        % check if file needs to be copied
-        if ~exist(targFile, 'file')
+         
+        % check if file needs to be copied or is on tape already
+        if ~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)
             copyfile(sourceFile, targFile); %make sure there is a copy on the server
             fprintf('Copied local file %s to server\n', sourceFile);
         end
         
-        % check if video file is broken
-        [~,~,fileType] = fileparts(cFiles(iFiles).name);
-        if ~strcmpi(fileType, '.dat') && cFiles(iFiles).bytes > 0 %dont do this for widefield data or empty files
-            v1 = VideoReader(sourceFile);
-            v2 = VideoReader(targFile);
-            if v1.Duration ~= v2.Duration
-                copyfile(sourceFile, targFile); %make sure there is a copy on the server
-                fprintf('Copied local file %s to server\n', sourceFile);
-
-                clear v2
+        if ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) %only do this if file is not on tape already
+            % check if video file is broken
+            [~,~,fileType] = fileparts(cFiles(iFiles).name);
+            if ~strcmpi(fileType, '.dat') && cFiles(iFiles).bytes > 0 %dont do this for widefield data or empty files
+                v1 = VideoReader(sourceFile);
                 v2 = VideoReader(targFile);
+                if v1.Duration ~= v2.Duration
+                    copyfile(sourceFile, targFile); %make sure there is a copy on the server
+                    fprintf('Copied local file %s to server\n', sourceFile);
+                    
+                    clear v2
+                    v2 = VideoReader(targFile);
+                end
+            else
+                clear v1 v2
+                v1.Duration = 0;
+                v2.Duration = 0;
             end
-        else
-            clear v1 v2
-            v1.Duration = 0;
-            v2.Duration = 0;
         end
-
+        
         % check if local file can be deleted
-        if exist(targFile, 'file') && v1.Duration == v2.Duration
+        if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && v1.Duration == v2.Duration)
             delete(sourceFile); %only delete local file if there is a copy on the server
             fprintf('Removed local file %s\n', sourceFile);
         else

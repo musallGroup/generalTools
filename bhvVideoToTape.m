@@ -9,7 +9,7 @@ function bhvVideoToTape(basePath, targPath)
 % there (e.g. \\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin\).
 
 % basePath = '\\naskampa\DATA\BpodBehavior\F129\PuffyPenguin';
-% targPath = '\\naskampa\DATA\RAWDATA\F129\PuffyPenguin';
+% targPath = '\\naskampa\DATA\BpodBehavior\RAWDATA\F129\PuffyPenguin';
 
 if ~exist('targPath', 'var') || isempty(targPath)
     %assume that targPath is a folder 'RAWDATA' on the same folder as the basePath
