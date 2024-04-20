@@ -84,10 +84,9 @@ for iSessions = 1 : length(cSessions)
                 v1 = VideoReader(sourceFile);
                 v2 = VideoReader(targFile);
                 if v1.Duration ~= v2.Duration
+                    clear v2
                     copyfile(sourceFile, targFile); %make sure there is a copy on the server
                     fprintf('Copied local file %s to server\n', sourceFile);
-                    
-                    clear v2
                     v2 = VideoReader(targFile);
                 end
             else
@@ -99,9 +98,11 @@ for iSessions = 1 : length(cSessions)
         
         % check if local file can be deleted
         if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && v1.Duration == v2.Duration)
+            clear v1 v2
             delete(sourceFile); %only delete local file if there is a copy on the server
             fprintf('Removed local file %s\n', sourceFile);
         else
+            clear v1 v2
             error('something very weird happened - something wrong with server communication or server full??');
         end
     end
