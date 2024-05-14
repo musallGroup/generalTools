@@ -9,7 +9,7 @@ function [pVal_cStim, tStat_cStim, fullmodel, modelCompare] = LME_compare(dataIn
 dataIn1 = double(dataIn1(:));
 dataIn2 = double(dataIn2(:));
 
-% create linear midex-effect model with 1 fixed and 1 random variable.
+% create linear mixed-effect model with 1 fixed and 1 random variable.
 cStims = repmat(1:2, size(dataIn1,1), 1); %index for the two test variables
 cStims = cStims(:);
 cData = cat(1, dataIn1(:), dataIn2(:)); %combine both inputs into 1 vector
