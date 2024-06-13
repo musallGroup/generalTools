@@ -1,7 +1,7 @@
-function make_dir(path)
-if not(exist(path, 'dir'))
+function make_dir(cPath)
+if not(exist(cPath, 'dir'))
     try
-        mkdir(path);
+        mkdir(cPath);
     catch
     end
 end

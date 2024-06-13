@@ -1616,11 +1616,15 @@ function toggleOutline_Callback(hObject, eventdata, handles)
 if isfield(handles.UserData,'oLines') && any(ishandle(handles.UserData.oLines))
     delete(handles.UserData.oLines);
 else
-    hold(handles.FrameImage,'on');
-    for x = 1 : length(handles.UserData.outlines)
-        handles.UserData.oLines(x) = plot(handles.UserData.outlines{x}(:,2), handles.UserData.outlines{x}(:,1), 'w', 'LineWidth', 0.1, 'parent', handles.FrameImage);
+    try
+        hold(handles.FrameImage,'on');
+        for x = 1 : length(handles.UserData.outlines)
+            handles.UserData.oLines(x) = plot(handles.UserData.outlines{x}(:,2), handles.UserData.outlines{x}(:,1), 'w', 'LineWidth', 0.1, 'parent', handles.FrameImage);
+        end
+        hold(handles.FrameImage,'off');
+    catch
+        handles.UserData.oLines = cc_plotAllenOutline(handles.FrameImage);
     end
-    hold(handles.FrameImage,'off');
 end
 guidata(hObject, handles);
 
