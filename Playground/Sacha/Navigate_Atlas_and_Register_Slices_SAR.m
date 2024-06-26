@@ -23,7 +23,7 @@ plane = 'coronal';
 
 %% GET PROBE TRAJECTORY POINTS
 
-% load the ref=============================erence brain and region annotations
+% load the reference brain and region annotations
 if ~exist('av','var') || ~exist('st','var') || ~exist('tv','var')
     disp('loading reference atlas...')
     av = readNPY(annotation_volume_location);
@@ -55,12 +55,12 @@ sliceBrowser(slice_figure_browser, processed_images_folder, f, reference_size);
 
 % % use application in Atlas Transform Viewer
 % % use this function if you have a processed_images_folder with appropriately processed .tif histology images
-f = AtlasTransformBrowser_IL(f, tv_plot, av_plot, st, slice_figure_browser, processed_images_folder, probe_save_name_suffix, plane);
+f = AtlasTransformBrowser_SAR(f, tv_plot, av_plot, st, slice_figure_browser, processed_images_folder, probe_save_name_suffix, plane);
 
 
 % use the simpler version, which does not interface with processed slice images
 % just run these two lines instead of the previous 5 lines of code
 % 
-%  save_location = processed_images_folder;
-%  f = allenAtlasBrowser(f, tv_plot, av_plot, st, save_location, probe_save_name_suffix, plane);
+  %save_location = processed_images_folder;
+  %f = allenAtlasBrowser(f, tv_plot, av_plot, st, save_location, probe_save_name_suffix, plane);
 
