@@ -202,7 +202,7 @@ switch alg
           
           % changed this part to get significance
           [pVals(i,c),~,stats] = ranksum(x1,x2);
-          auc(i,c) = (stats.ranksum - n1*(n1+1)/2) / (n1*n2);
+          auc(i,c) = (stats.ranksum - n1*(n1+1)/2) / (n1*n2); %the first term here computes the U stastic from the ranksum of the first group. The second then computes the AUC.
         end
       end % end of 'for i' looplength(
     end % end of 'for j' loop
