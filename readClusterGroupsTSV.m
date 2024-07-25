@@ -27,10 +27,19 @@ isUns = cellfun(@(x)strcmp(x,'unsorted'),C{2}(2:end));
 isProbMUA = cellfun(@(x)strcmp(x,'pMUA'),C{2}(2:end));
 isProbSUA = cellfun(@(x)strcmp(x,'pSUA'),C{2}(2:end));
 
-if strcmpi(sorterType, 'phy')
-    isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
-elseif strcmpi(sorterType, 'sortingview')
-    isGood = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+% if strcmpi(sorterType, 'phy')
+%     isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
+% elseif strcmpi(sorterType, 'sortingview')
+%     isGood = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+% end
+
+%check if annotation follows phy or sortingview logic
+a = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
+b = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+if sum(a) > sum(b)
+    isGood = a;
+else
+    isGood = b;
 end
     
 % create labels

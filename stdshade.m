@@ -36,12 +36,15 @@ end
 if strcmpi(avgType, 'mean')
     amean = nanmean(amatrix,1); %get man over first dimension
     % astd = nanstd(amatrix,[],1); % to get std shading
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-    end
     astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
     astdHigh = amean + astd; %get SEM above mean
     astdLow = amean - astd; %get SEM below mean
+       
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
+        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data
+    end
     
 elseif strcmpi(avgType, 'median')
 %     amean = nanmedian(amatrix,1); %get man over first dimension
