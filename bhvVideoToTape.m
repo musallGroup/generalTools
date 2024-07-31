@@ -7,7 +7,7 @@ function bhvVideoToTape(basePath, targPath)
 % identify where data should be copied to. Otherwise, the function assumes
 % that there is a folder RAWDATA on the same server and will move data
 % there (e.g. \\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin\).
-
+%
 % basePath = '\\naskampa\DATA\BpodBehavior\F129\PuffyPenguin';
 % targPath = '\\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin';
 
