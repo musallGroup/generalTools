@@ -11,8 +11,8 @@ if ~exist('showPlot', 'var') || isempty(showPlot)
 end
 
 %% Example data
-b = normrnd(10,1,1,1000);
-a = normrnd(25,1,1,1000);
+a = normrnd(10,1,1,1000);
+b = normrnd(25,1,1,1000);
 binEdges = 0:0.5:30;
 
 respA = histcounts(a, binEdges);

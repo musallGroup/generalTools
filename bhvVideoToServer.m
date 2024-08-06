@@ -1,32 +1,38 @@
-function bhvVideoToServer(basePath, targPath, checkTape)
+function bhvVideoToServer(basePath, serverPath, checkTape)
 % Function to move behavioral data from bpod paradimgs from local PC to the
 % server. Will copy all data but only delete movies from the base folder.
 % basePath should point to the folder of a specific mouse/paradigm
 % combination (e.g. E:\Bpod Local\Data\2482\PuffyPenguin\)
-% if targPath is given it should match the formating of basePath to
-% identify where data should be copied to. Otherwise, the function assumes
-% that there is a folder on the server and will move data
-% there (e.g. \\naskampa\DATA\BpodBehavior\F129\PuffyPenguin\).
-% If checkTape is true, files are only covered if they are not on the tape
-% drive already.
-
+% serverPath should be the server partition where data should be moved
+% ('data', 'lts', or 'lts2'). If checkTape is true, files are only covered 
+% if they are not on the tape drive already.
+%
+% example usage:
 % basePath = 'E:\Bpod Local\Data\2482\PuffyPenguin';
-% targPath = '\\naskampa\DATA\BpodBehavior\2482\PuffyPenguin\';
+% serverPath  = 'lts';
+% checkTape = false;
+% bhvVideoToServer(basePath, serverPath, checkTape)
 
 if ~exist('checkTape' , 'var') || isempty(checkTape)
     checkTape = false;
 end
 
-if ~exist('targPath', 'var') || isempty(targPath)
-    localString = 'Bpod Local\Data'; %assume this is the local folder
-    
-    %assume that targPath is \\naskampa\data\BpodBehavoior\ as a default
-    baseIdx = strfind(basePath, localString);
-    baseIdx = baseIdx + length(localString);
-    
-    serverString = '\\naskampa\Data\BpodBehavior\'; %assume this is the server folder
-    targPath = strrep(basePath, basePath(1:baseIdx), serverString);
+if ~exist('serverPath', 'var') || isempty(serverPath)
+    serverString = '\\naskampa.kampa-10g\lts\BpodBehavior\'; %assume this is the server folder. lts is default
+else
+    serverString = ['\\naskampa.kampa-10g\' serverPath '\BpodBehavior\']; %assume this is the server folder, given the target partition.
 end
+    
+%check if 10GB network is present and switch to regular network otherwise
+if ~exist(serverString, 'dir')
+    serverString = strrep(serverString, 'naskampa.kampa-10g', 'naskampa');
+end
+    
+%source and target path are under Bpod Local and BpodBehavoior by default
+localString = 'Bpod Local\Data'; %assume this is the local folder
+baseIdx = strfind(basePath, localString);
+baseIdx = baseIdx + length(localString);
+targPath = strrep(basePath, basePath(1:baseIdx), serverString);
 
 % find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
