@@ -62,7 +62,7 @@ for iFiles = 1 : length(binFiles)
             %double-check that file was really deleted and produce error otherwise. 
             % It happened before that ap.bin was still on the server for some reason.
             if exist(cFile, 'file')
-                error('ap.bin file could not be deleted. Check what is going on on the server!');
+                error('ap.bin file could not be deleted. Is it still open somewhere else?');
             end
         else
             disp('Compression failed. Check if mtscomp is installed in the base environment.');
