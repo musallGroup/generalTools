@@ -8,11 +8,11 @@
 % * remember to run one cell at a time, instead of the whole script at once *
 
 % directory of histology images
-image_folder = '\\Naskampa\lts\Sacha\Histology_Julich\images_by_order';
+image_folder = 'C:\Users\abourachid\histology_Julich_retro\2869';
 
 % directory to save the processed images -- can be the same as the above image_folder
 % results will be put inside a new folder called 'processed' inside of this image_folder
-save_folder = '\\Naskampa\lts\Sacha\Histology_Julich\images_by_order';
+save_folder = 'C:\Users\abourachid\histology_Julich_retro\2869';
 
 % name of images, in order anterior to posterior or vice versa
 % once these are downsampled they will be named ['original name' '_processed.tif']
