@@ -1,2 +1,4 @@
-function data = vec(data)
-data = data(:);
+function x = vec(x)
+% reduces dimensions of data to 1
+
+x = x(:);
