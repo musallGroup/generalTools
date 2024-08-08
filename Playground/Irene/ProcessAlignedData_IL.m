@@ -1,17 +1,24 @@
 %% Load Atlas Data and Processed Images
 
 % directory of processed image
-Image_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations';
+Image_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test'; %path to transofrmed images
 allImages = dir(fullfile(Image_folder,'*.tif'));
 allTransform = dir(fullfile(Image_folder,'*.mat'));
 
 % directory of AtlasData
-Atlas_folder = 'E:\Histology_Test\';
+Atlas_folder = 'E:\Histology_Test\'; %path to saved AtlasData
 Atlas_file_name = 'AtlasData';
 Save_name = 'FluorescenceMatrix_';
 Save_name_cumulative = 'FluorescenceMatrixCumulative_';
-Save_folder = 'E:\Histology_Test\ALM_SC_04';
+Save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test'; %path to folder to save the analyzed data
 
+% define steps for averaging slices to a certain range in the Allen atlas.
+% stepSize = 10 would mean we combine all slices in a range of 10 slices in
+% the Allen reference.
+stepSize = 10;
+sliceSteps = 1: stepSize : size(av,1);
+
+%% loop over brains
 for iSlice = 1:length(allImages)
 
     %Image_file_name = 'Composite9_GFP-tdTomato_processed_transform_data';
@@ -63,33 +70,13 @@ for iSlice = 1:length(allImages)
     save(fullfile(Save_folder, Save_name + string(current_slice) + ".mat"), "fluoTable");
 end
 
-%% Extract SliceID
-Results_folder = 'E:\Histology_Test\ALM_SC_04';
-file_list = dir(fullfile(Results_folder, 'FluorescenceMatrix_*'));
-num_files = length(file_list);
-sliceID = zeros(num_files, 1); % Preallocate sliceID as an array
 
-for i = 1:num_files
-    file_name = file_list(i).name;
-    match = regexp(file_name, '(\d+)', 'match');
-    
-    if ~isempty(match)
-        number = str2double(match{end}); 
-    else
-        number = NaN; %
-    end
-    
-    sliceID(i) = number; %
-   
-end
-
-sliceID =  sort(sliceID);
 %% Create a table for concatenated fluorescence values
 Atlas_folder = 'E:\Histology_Test';
 Atlas_file_name = 'AtlasData';
 Atlas_FullPath_File = fullfile(Atlas_folder, Atlas_file_name);
 AtlasFile = load(Atlas_FullPath_File);
-Results_folder = 'E:\Histology_Test\ALM_SC_04';
+Results_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test\New folder';
 
 av = AtlasFile.allData.av;
 st = AtlasFile.allData.st;
@@ -122,30 +109,9 @@ for iFile = 1:numFiles
     end
 end
 
-Results_folder = 'E:\Histology_Test\ALM_SC_04';
+Results_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test\New folder';
 save(fullfile(Results_folder, [Save_name_cumulative '.mat']), 'fluorescenceMatrix', 'idx');
 
-%%
-% %% Extract SliceID
-% Results_folder = 'E:\Histology_Test\ALM_SC_04';
-% file_list = dir(fullfile(Results_folder, 'FluorescenceMatrix_*'));
-% num_files = length(file_list);
-% sliceID = zeros(num_files, 1); % Preallocate sliceID as an array
-% 
-% for i = 1:num_files
-%     file_name = file_list(i).name;
-%     match = regexp(file_name, '(\d+)', 'match');
-%     
-%     if ~isempty(match)
-%         number = str2double(match{end}); 
-%     else
-%         number = NaN; %
-%     end
-%     
-%     sliceID(i) = number; %
-% end
-% 
-% sorted_indices = sort(sliceID);
 
 
 %% Get fluorescence Traces for a given area
@@ -245,8 +211,7 @@ for iSCRegion = 1:length(fieldsSC)
 end
 
 %% Loop on all brains to average
-stepSize = 10;
-sliceSteps = 1: stepSize : size(av,1);
+
 
 histologyPath = 'E:\Histology_Test\';
 fileNames = 'ALM_SC_*'; 
@@ -258,6 +223,7 @@ AtlasFile = load(Atlas_FullPath_File);
 av = AtlasFile.allData.av;
 st = AtlasFile.allData.st;
 tv = AtlasFile.allData.tv;
+
 
 AllRegionID = unique(AtlasFile.allData.st.sphinx_id);
 
@@ -310,7 +276,7 @@ for iReg = 1:length(AllRegionID)
     end
 end
 
-%% Get fluorescence Traces for a given area
+%% Get fluorescence Traces for the thalamic area
 
 % Striatum = {'Caudoputamen'};
 Tn.Thalamus = {"Thalamus"};
@@ -375,11 +341,59 @@ for iThalamicRegion = 1:length(fieldsTn)
     niceFigure;
     legend(cLine, Thalamic_Nuclei);
     xlim([0 size(tv, 1)])
-    ylim([0 10])
+    ylim([0 5])
             
     % Add labels and title
     xlabel('Thalamic Length');
     ylabel('Mean Fluorescence');
     title(cat(2, 'AP distribution of ALM projetions into ',(fieldsTn{iThalamicRegion})));
+end
+
+%% Get fluorescence Traces for the collicular area
+% Define the SC structures
+% SC.Sensory = {'"Superior colliculus sensory related"', '"Superior colliculus optic layer"'};
+SC.Motor = {'"Superior colliculus motor related"','"Superior colliculus motor related deep gray layer"', '"Superior colliculus motor related deep white layer"','"Superior colliculus motor related intermediate white layer"', '"Superior colliculus motor related intermediate gray layer"'};
+% SC.Motor = {'"Superior colliculus motor related deep gray layer"'};
+
+plotColor = ['r', 'b', 'k', 'y', 'm', 'c', 'g', 'w'];
+
+fieldsSC = fieldnames(SC);
+for iSCRegion = 1:length(fieldsSC)
+    figure;
+    SC_Nuclei = SC.(fieldsSC{iSCRegion});
+    clear cLine
+    cLine = []; % Initialize cLine to ensure it is always defined
+    for iNucleus = 1:numel(SC_Nuclei)
+        idNucleus = find(strcmpi(st.name(:), SC_Nuclei{iNucleus}));
+        index = st.sphinx_id(idNucleus);
+
+        if ~isempty(index)
+
+            cIdx = ~isnan(fluorescenceAvg(index, :));
+            
+            if ~isempty(find(cIdx))
+                xVals = sliceSteps(cIdx);
+
+                cData = fluorescenceAvg(index, cIdx);
+                semData = fluorescenceSEM(index, cIdx);
+
+                hold on;
+                cLine(iNucleus) = errorshade(xVals, cData, semData, semData, plotColor(iNucleus), 0.2, 3);
+            end
+        end
+    end
+    niceFigure;
+    
+    % Check if cLine is not empty before calling legend
+    hLine = findobj(gcf, 'Type', 'Line');
+    legendIdx = find(cLine);
+    legend(hLine, SC_Nuclei{legendIdx});
+    xlim([0 size(tv, 1)])
+    ylim([0 5])
+            
+    % Add labels and title
+    xlabel('SC Length');
+    ylabel('Mean Fluorescence');
+    title(cat(2, 'AP distribution of ALM projetions into ',(fieldsSC{iSCRegion})));
 end
 

@@ -8,11 +8,11 @@
 % * remember to run one cell at a time, instead of the whole script at once *
 
 % directory of histology images
-image_folder = '\\Naskampa\lts\Sacha\Histology_Julich\images by order';
+image_folder = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro_trialexports\test8';
 
 % directory to save the processed images -- can be the same as the above image_folder
 % results will be put inside a new folder called 'processed' inside of this image_folder
-save_folder = '\\Naskampa\lts\Sacha\Histology_Julich\images by order';
+save_folder = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro_trialexports\test8';
 
 % name of images, in order anterior to posterior or vice versa
 % once these are downsampled they will be named ['original name' '_processed.tif']
@@ -59,11 +59,7 @@ elseif strcmp(plane,'transverse')
 end
 
 
-
-
-
-
-% finds or creates a folder location for processed images -- 
+%% finds or creates a folder location for processed images -- 
 % a folder within save_folder called processed
 folder_processed_images = fullfile(save_folder, 'processed');
 if ~exist(folder_processed_images)
