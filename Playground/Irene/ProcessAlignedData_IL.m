@@ -1,74 +1,154 @@
 %% Load Atlas Data and Processed Images
+minAreaSizeforPlot = 100; %number of pixels in a given area before its plotted on the histo image
+colorChannel = 1; %this would be red, green, blue for 1,2,3
 
 % directory of processed image
-Image_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test'; %path to transofrmed images
-allImages = dir(fullfile(Image_folder,'*.tif'));
-allTransform = dir(fullfile(Image_folder,'*.mat'));
+serverPath = '\\Fileserver\Allgemein\transfer\for Irene\data';
+localSavePath = 'E:\Histology_AnterogradeALM';
+serverFolder = 'ALM_SC_03_tifs\C5_TL_GFP\processed\transformations\'; %path to transofrmed images
+Image_folder = fullfile(serverPath, serverFolder);
+Save_folder = fullfile(localSavePath, serverFolder);
+
 
 % directory of AtlasData
 Atlas_folder = 'E:\Histology_Test\'; %path to saved AtlasData
 Atlas_file_name = 'AtlasData';
 Save_name = 'FluorescenceMatrix_';
 Save_name_cumulative = 'FluorescenceMatrixCumulative_';
-Save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test'; %path to folder to save the analyzed data
+Save_name_fig = 'FluorescenceFigure_';
+% Save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\'; %path to folder to save the analyzed data
 
-% define steps for averaging slices to a certain range in the Allen atlas.
+
+%% only use files where both tif and transformed matlab data exist
+allImages = dir(fullfile(Image_folder,'*.tif'));
+allTransform = dir(fullfile(Image_folder,'*_processed_transform_data.mat'));
+
+% Define a function to extract the numbers from file names using textscan
+extractNumber = @(fileName) textscan(fileName, '%s%s%d', 1, 'Delimiter', '-');
+imgNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allImages(:).name}, 'UniformOutput', false));
+matNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allTransform(:).name}, 'UniformOutput', false));
+
+imUseIdx = ismember(imgNumbers, matNumbers); %check for images that have no transform
+matUseIdx = ismember(matNumbers, imgNumbers(imUseIdx)); %check for transforms that have no images
+
+% only use correct files
+allImages = allImages(imUseIdx);
+allTransform = allTransform(matUseIdx);
+
+%% load atlas data
+full_path_atlas = fullfile(Atlas_folder, Atlas_file_name + ".mat");
+AtlasData = load(full_path_atlas);
+av = AtlasData.allData.av;
+st = AtlasData.allData.st;
+tv = AtlasData.allData.tv;
+    
+%% define steps for averaging slices to a certain range in the Allen atlas.
 % stepSize = 10 would mean we combine all slices in a range of 10 slices in
 % the Allen reference.
 stepSize = 10;
 sliceSteps = 1: stepSize : size(av,1);
+avgSliceData = cell(1, length(sliceSteps));
+avgSliceCnt = zeros(1, length(sliceSteps));
 
-%% loop over brains
+% loop over brains
+h = figure('renderer', 'painters');
+% Set the figure to A4 size
+h.Position = [1          41        1920         963];
+set(h, 'PaperUnits', 'centimeters');
+set(h, 'PaperSize', [29.7, 21]); % A4 size in centimeters
+set(h, 'PaperPositionMode', 'manual');
+set(h, 'PaperPosition', [0, 0, 29.7, 21]);
 for iSlice = 1:length(allImages)
 
-    %Image_file_name = 'Composite9_GFP-tdTomato_processed_transform_data';
-    Image_file_name = allTransform(iSlice).name;
-    full_path_file = fullfile(Image_folder, Image_file_name);
-    ImageData = load(full_path_file);
-
-    current_slice = ImageData.save_transform.allen_location{1};
-
-    %full_path_atlas = fullfile(Atlas_folder, Atlas_file_name + string(current_slice) + ".mat");
-    full_path_atlas = fullfile(Atlas_folder, Atlas_file_name + ".mat");
-    AtlasData = load(full_path_atlas);
+    %Image_file_name = 'Composite9_GFP-tdTomato_processed_transform_data';   
+    Transform_file_name = allTransform(iSlice).name;
+    full_path_file = fullfile(Image_folder, Transform_file_name);
+    transformData = load(full_path_file);
+    current_slice = transformData.save_transform.allen_location{1};
 
     % directory of Transformed Image
     %Transformed_image = imread('Y:\Histology_Musall\Histology_Irene\Moritz\M133_Tiff\processed3\transformations\Composite13_GFP-tdTomato_processed_transformed.tif');
     Transformed_image = imread(fullfile(Image_folder, allImages(iSlice).name));
-    figure; imshow(Transformed_image);
+    subplot(1,3,3); cla;
+    subplot(1,3,2); cla;
+    subplot(1,3,1); cla;
+    imshow(Transformed_image); 
+    title('Confirm flip here'); drawnow;
+     
+    % stay in a loop until no slice flipping is required anymore
+    cResp = [];
+    while strcmpi(cResp, 'y') || isempty(cResp)
+        cResp = input('Hit Y to flip image or any other button to continue\n', 's');
+        % flip the image if requested
+        if strcmpi(cResp, 'y')
+            Transformed_image = fliplr(Transformed_image);
+            cla;
+            imshow(Transformed_image); title('Confirm flip here'); axis image;
+        end
+    end
+    title(['Fluorescence; Current slice: ' num2str(current_slice)]);
 
+    subplot(1,3,2); cla;
+    imshow(Transformed_image); axis image; hold on;
+    title(['Fluorescence+Outlines; Current slice: ' num2str(current_slice)]); axis image;
+    
     %% Find Histology Plane into the AtlasData and Calculate mean fluorescence within each Brain Region (ROI)
-
-    av = AtlasData.allData.av;
-    st = AtlasData.allData.st;
-    tv = AtlasData.allData.tv;
-
-    figure;
+    subplot(1,3,3); cla;
     imagesc(squeeze(av(current_slice,:,:)));
-
+    title(['Allen slice ' num2str(current_slice)]); axis image;
+    
+    % keep average of transformed image as part of the corresponding allen average slice
+    allenSliceRange = find(sliceSteps <= current_slice, 1, 'last'); %find in which bin the slice is located
+    avgSliceCnt(allenSliceRange) = avgSliceCnt(allenSliceRange) + 1; %increase counter for current bin
+    avgSliceData{allenSliceRange} = runMean(avgSliceData{allenSliceRange}, Transformed_image, avgSliceCnt(allenSliceRange));
+    fprintf('Current slice bin: %i, Total slice count in this bin: %i\n', allenSliceRange, avgSliceCnt(allenSliceRange));
+    
+    %% check regions
     RegionsID = (unique(av(current_slice,:,:)));
-
-    meanFluorescence = zeros(length(RegionsID),1);
+    meanFluorescence = zeros(length(RegionsID), size(Transformed_image,3));
     regionId = zeros(length(RegionsID),1);
-
     regionName = strings(length(RegionsID),1);
     regionAcr = strings(length(RegionsID),1);
 
     concatenatedTable = [];
-    
     for cID = 1: length(RegionsID)
 
-        locID = squeeze(av(current_slice,:,:)) == RegionsID(cID);
-        diffImg = Transformed_image(:,:,1) -  Transformed_image(:,:,2); %subtract green channel from red to remove brightfield component
-        meanFluorescence(cID) = mean(diffImg(locID), "all");
+        locID = squeeze(av(current_slice,:,:)) == RegionsID(cID); %get mask for current area
+        cData = arrayShrink(Transformed_image, ~locID, 'merge'); %this function extracts the pixels from all channels in the current area
+        meanFluorescence(cID,:) = mean(cData, 1);
         regionName(cID) = st.name{RegionsID(cID)};
         regionAcr(cID) = st.acronym{RegionsID(cID)};
         regionId(cID) = RegionsID(cID);
 
+        % show area outlines on fluorescent image
+        subplot(1,3,2); hold on;
+        a = bwboundaries(locID); %outline of selected area
+        for x = 1 : length(a)
+            if size(a{x},1) > minAreaSizeforPlot
+                plot(smooth(a{x}(:,2),10),smooth(a{x}(:,1),10),'w', 'linewidth', 0.1)
+            end
+        end
     end
+    drawnow;
+    
+    if ~exist(Save_folder, 'dir')
+        mkdir(Save_folder);
+    end
+    % save data table
     fluoTable = table(regionId,regionAcr,regionName,meanFluorescence);
     save(fullfile(Save_folder, Save_name + string(current_slice) + ".mat"), "fluoTable");
+
+    % save figure as jpg and pdf
+    set(h, 'Color', 'w');
+    set(h, 'InvertHardcopy', 'off');
+    saveas(h, fullfile(Save_folder, Save_name_fig + string(current_slice) + ".jpg"));
+    saveas(h, fullfile(Save_folder, Save_name_fig + string(current_slice) + ".pdf"));
+    fprintf('Current slice %i/%i\n', iSlice, length(allImages));
+    pause;
 end
+
+%save avgSliceData to file
+save(fullfile(Save_folder, 'avgSliceData.mat'), 'avgSliceData', 'avgSliceCnt', 'sliceSteps');
 
 
 %% Create a table for concatenated fluorescence values
