@@ -8,11 +8,11 @@
 % * remember to run one cell at a time, instead of the whole script at once *
 
 % directory of histology images
-image_folder = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro_trialexports\test8';
+image_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_06_tifs\C5_TL_TdTomato';
 
 % directory to save the processed images -- can be the same as the above image_folder
 % results will be put inside a new folder called 'processed' inside of this image_folder
-save_folder = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro_trialexports\test8';
+save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_06_tifs\C5_TL_TdTomato';
 
 % name of images, in order anterior to posterior or vice versa
 % once these are downsampled they will be named ['original name' '_processed.tif']
@@ -115,7 +115,7 @@ end
 close all
             
 % this takes images from folder_processed_images ([save_folder/processed]),
-% and allows you to rotate, flip, sharpen, crop, and switch their order, so they
+% and accllows you to rotate, flip, sharpen, crop, and switch their order, so they
 % are in anterior->posterior or posterior->anterior order, and aesthetically pleasing
 % 
 % it also pads images smaller than the reference_size and requests that you

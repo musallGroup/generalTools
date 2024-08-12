@@ -5,7 +5,7 @@ colorChannel = 1; %this would be red, green, blue for 1,2,3
 % directory of processed image
 serverPath = '\\Fileserver\Allgemein\transfer\for Irene\data';
 localSavePath = 'E:\Histology_AnterogradeALM';
-serverFolder = 'ALM_SC_03_tifs\C5_TL_GFP\processed\transformations\'; %path to transofrmed images
+serverFolder = 'ALM_SC_06_tifs\C5_TL_TdTomato\processed\transformations\'; %path to transofrmed images
 Image_folder = fullfile(serverPath, serverFolder);
 Save_folder = fullfile(localSavePath, serverFolder);
 
@@ -156,7 +156,7 @@ Atlas_folder = 'E:\Histology_Test';
 Atlas_file_name = 'AtlasData';
 Atlas_FullPath_File = fullfile(Atlas_folder, Atlas_file_name);
 AtlasFile = load(Atlas_FullPath_File);
-Results_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test\New folder';
+Results_folder = 'E:\Histology_AnterogradeALM\ALM_SC_05_tifs\C5_tdTomato_TL\processed\transformations';
 
 av = AtlasFile.allData.av;
 st = AtlasFile.allData.st;
@@ -189,7 +189,6 @@ for iFile = 1:numFiles
     end
 end
 
-Results_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\test\New folder';
 save(fullfile(Results_folder, [Save_name_cumulative '.mat']), 'fluorescenceMatrix', 'idx');
 
 
@@ -291,14 +290,10 @@ for iSCRegion = 1:length(fieldsSC)
 end
 
 %% Loop on all brains to average
-
-
-histologyPath = 'E:\Histology_Test\';
+histologyPath = 'E:\Histology_AnterogradeALM\';
+% subFolder = '\**\';
 fileNames = 'ALM_SC_*'; 
-Atlas_folder = 'E:\Histology_Test';
-Atlas_file_name = 'AtlasData';
-Atlas_FullPath_File = fullfile(Atlas_folder, Atlas_file_name);
-AtlasFile = load(Atlas_FullPath_File);
+
 
 av = AtlasFile.allData.av;
 st = AtlasFile.allData.st;
@@ -316,7 +311,8 @@ fluorescenceMin = fluorescenceAvg;
 fluorescenceSEM = fluorescenceAvg;
 
 % Loop through each subfolder
-for iBrain = 1:length(allBrains)
+for iBrain = 1:2
+%     for iBrain = 1:length(allBrains)
       brainID = allBrains(iBrain).name;
 %     It shouldn't be necessary to check that the names aren't '.' or '..'
 %     because ze qre selecting only the files with ALM_SC in the name
@@ -469,11 +465,12 @@ for iSCRegion = 1:length(fieldsSC)
     legendIdx = find(cLine);
     legend(hLine, SC_Nuclei{legendIdx});
     xlim([0 size(tv, 1)])
-    ylim([0 5])
+    ylim([0 100])
             
     % Add labels and title
     xlabel('SC Length');
     ylabel('Mean Fluorescence');
     title(cat(2, 'AP distribution of ALM projetions into ',(fieldsSC{iSCRegion})));
 end
+
 

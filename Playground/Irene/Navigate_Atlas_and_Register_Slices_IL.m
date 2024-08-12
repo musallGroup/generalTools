@@ -7,7 +7,7 @@
 
 
 % directory of histology
-processed_images_folder = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro_trialexports\test6\processed'; 
+processed_images_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_06_tifs\C5_TL_TdTomato\processed'; 
 
 % name the saved probe points, to avoid overwriting another set of probes going in the same folder
 probe_save_name_suffix = ''; 
