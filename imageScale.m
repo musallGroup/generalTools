@@ -19,7 +19,7 @@ else
     cRange = [prctile(cMap(:),2.5) prctile(cMap(:),97.5)];
 end
 
-mapImg = imshow(squeeze(cMap),cRange);
+mapImg = imshow(squeeze(cMap),cRange, 'InitialMagnification', 'fit');
 set(mapImg,'AlphaData',~isnan(mapImg.CData)); %make NaNs transparent.
 colormap(mapImg.Parent, colormap_blueblackred);
 

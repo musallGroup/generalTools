@@ -47,20 +47,19 @@ if strcmpi(avgType, 'mean')
     end
     
 elseif strcmpi(avgType, 'median')
-%     amean = nanmedian(amatrix,1); %get man over first dimension
+    %     amean = nanmedian(amatrix,1); %get man over first dimension
     amean = prctile(amatrix,50,1); %get median as 50th prctile
-    
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-    end
     astdHigh = prctile(amatrix,75,1); %upper shading range
     astdLow = prctile(amatrix,25,1); %lower shading range
-
+        
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
+        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data        
+    end
 else
     error('unknown average type');
 end
-
-
 
 if ~exist('alpha','var') || isempty(alpha)
     alpha = 1;
@@ -96,7 +95,7 @@ else
     fillOut = fill([F fliplr(F)],[astdHigh fliplr(astdLow)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
 end
 if alpha == 1; acolor='k'; end
-lineOut = plot(F,amean, 'color', acolor,'linewidth',1.5); %% change color or linewidth to adjust mean line
+lineOut = plot(F,amean, '-o', 'MarkerFaceColor', 'w', 'color', acolor, 'linewidth',1.5); %% change color or linewidth to adjust mean line
 
 if check
     hold off;
