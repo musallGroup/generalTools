@@ -43,7 +43,7 @@ else
 end
     
 % create labels
-cgs = zeros(size(cids));
+cgs = zeros(size(cids), 'single');
 cgs(isMUA) = 1;
 cgs(isGood) = 2;
 cgs(isUns) = 3;

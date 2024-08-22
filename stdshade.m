@@ -95,7 +95,7 @@ else
     fillOut = fill([F fliplr(F)],[astdHigh fliplr(astdLow)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
 end
 if alpha == 1; acolor='k'; end
-lineOut = plot(F,amean, '-o', 'MarkerFaceColor', 'w', 'color', acolor, 'linewidth',1.5); %% change color or linewidth to adjust mean line
+lineOut = plot(F,amean, '-', 'MarkerFaceColor', 'w', 'color', acolor, 'linewidth',1.5); %% change color or linewidth to adjust mean line
 
 if check
     hold off;
