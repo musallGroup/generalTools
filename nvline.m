@@ -1,4 +1,4 @@
-function nvline(x,varargin)
+function lines = nvline(x,varargin)
 
 a = gca;
 if ishold(a)
@@ -8,7 +8,7 @@ else
 end
 
 for xx = 1 : length(x)
-    plot([x(xx),x(xx)],a.YLim,varargin{:});
+    lines(xx) = plot([x(xx),x(xx)],a.YLim,varargin{:});
 end
 if ~checker
     hold(a,'off');
