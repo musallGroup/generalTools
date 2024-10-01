@@ -495,11 +495,13 @@ for iReg = 1:length(AllRegionID)
                 
                 %check that number of channels are consistent. Can be an issues because of nans being set as a single number.
                 cData = fluorescenceMatrixes.(brainID)(iReg,find(useIdx)+1);
+            
                 [~, numChans] = cellfun(@size, cData);
                 if length(unique(numChans)) ~= 1
                     cData = cData(numChans > 1);
                 end
                 cData = cat(1, cData {:});
+                
                 
                 % collect data from slices
                 if size(cData,2) > 1 %more than one channel present, use colorChannel to select
@@ -545,7 +547,6 @@ for iTnRegion = 1:length(fieldsTn)
 
             cIdx = ~isnan(fluorescenceAvg(index, :));
             xVals = sliceSteps(cIdx);
-            
             cData = fluorescenceAvg(index, cIdx);
             semData = fluorescenceSEM(index, cIdx);
             
@@ -667,10 +668,12 @@ for iTnRegion = 1:length(Str)
 
             cIdx = ~isnan(fluorescenceAvg(index, :));
             xVals = sliceSteps(cIdx);
-            
+          
             cData = fluorescenceAvg(index, cIdx);
+           
             semData = fluorescenceSEM(index, cIdx);
-            
+           
+         
             hold on;
             cLine(iNucleus) = errorshade(xVals, cData(:), semData(:), semData(:), plotColor(iNucleus), 0.2, 3);
             
