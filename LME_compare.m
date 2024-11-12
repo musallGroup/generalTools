@@ -1,5 +1,5 @@
 function [pVal_cStim, tStat_cStim, fullmodel, modelCompare] = LME_compare(dataIn1, dataIn2, randomVar)
-% function to compare to variables, while controlling for the impact of the
+% function to compare two variables, while controlling for the impact of the
 % random variable 'randomVar'. The likelihood ratio test statistics LRStat 
 % is indicative of whether dataIn2 has an impact on dataIn1, when
 % controlling for the role of randomVar in a reduced model.
