@@ -20,9 +20,15 @@ for iChecks = 1 : length(expTable(1,:))
         cIdx = contains(expTable(1,:), optsFields{checkIdx});
         cData = expTable(:,cIdx);
         cData = cellfun(@(x) strtrim(x), cData, 'UniformOutput', false); %make sure there are no spaces at the beginning or the ened of the string
-        rowSelectIdx = rowSelectIdx & strcmpi(cData, opts.(optsFields{checkIdx}));
+        if iscell(opts.(optsFields{checkIdx}))
+            nbOptions = size(opts.(optsFields{checkIdx}),2);
+            rowMultSelectIdx = false(size(expTable,1),1);
+            for iOption = 1:nbOptions
+                rowMultSelectIdx = rowMultSelectIdx | strcmpi(cData,opts.(optsFields{checkIdx}){iOption});
+            end
+            rowSelectIdx = rowSelectIdx & rowMultSelectIdx;
+        else
+            rowSelectIdx = rowSelectIdx & strcmpi(cData, opts.(optsFields{checkIdx}));
+        end
     end
 end
-  
-recInfo = expTable(rowSelectIdx,:);
-recLabels = expTable(1,:);
