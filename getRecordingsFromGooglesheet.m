@@ -32,3 +32,5 @@ for iChecks = 1 : length(expTable(1,:))
         end
     end
 end
+recInfo = expTable(rowSelectIdx,:);
+recLabels = expTable(1,:);
