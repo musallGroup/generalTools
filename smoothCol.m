@@ -54,35 +54,60 @@ if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
         dataIn = double(dataIn);
     end
     
-    if strcmpi(fType,'box') %box filter
-        n = size(dataIn,1);
-        fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
-        cbegin = cumsum(dataIn(1:fWidth-2,:),1);
-        cbegin = bsxfun(@rdivide, cbegin(1:2:end,:), (1:2:(fWidth-2))');
-        cend = cumsum(dataIn(n:-1:n-fWidth+3,:),1);
-        cend = bsxfun(@rdivide, cend(end:-2:1,:), (fWidth-2:-2:1)');
-        dataOut = conv2(dataIn,ones(fWidth,1)/fWidth,'full'); %smooth trace with moving average
-        dataOut = [cbegin;dataOut(fWidth:end-fWidth+1,:);cend];
-        
-    elseif strcmpi(fType,'gauss') %gaussian filter
-        fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
-        if ~exist('fLength','var') || isempty(fLength)
-            fLength = round(fSig * 100); %length of gaussian filter
-        end
-        fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
-        kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
-        kernel = kernel / norm(kernel); %normalize kernel
-        dataOut = conv2(dataIn,kernel','same'); %smooth trace with gaussian
-        
-    elseif strcmpi(fType,'exp') %exponential filter
-        if ~exist('fLength','var') || isempty(fLength)
-            fLength = ceil(fWidth * 5);
-        end
-        kernel = exponentialFilter(fWidth, fLength);
-        kernel = [zeros(1, length(kernel)), kernel];
-        dataOut = conv2(dataIn,kernel','same'); %smooth trace with gaussian
-
+    % check if data is interupted by nans and separate into smaller parts
+    % for smoothing. Otherwise the will be affected by nan-edges
+    if any(isnan(dataIn(:)))
+        nanIdx = find(any(isnan(dataIn),2));
+        nanIdx = [0; nanIdx];
+    else
+        nanIdx = 0; %use all data
     end
+    
+    dataOut = nan(size(dataIn));
+    for x = 1 : length(nanIdx)
+        if x ~= length(nanIdx)
+            cIdx = nanIdx(x)+1:nanIdx(x+1)-1; %data for current patch
+        else
+            cIdx = nanIdx(x)+1:size(dataIn,1); %data for current patch
+        end
+        
+        if ~isempty(cIdx)
+            useData = dataIn(cIdx,:);
+            if strcmpi(fType,'box') %box filter
+                n = size(useData,1);
+                fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
+                cbegin = cumsum(useData(1:fWidth-2,:),1);
+                cbegin = bsxfun(@rdivide, cbegin(1:2:end,:), (1:2:(fWidth-2))');
+                cend = cumsum(useData(n:-1:n-fWidth+3,:),1);
+                cend = bsxfun(@rdivide, cend(end:-2:1,:), (fWidth-2:-2:1)');
+                outData = conv2(useData,ones(fWidth,1)/fWidth,'full'); %smooth trace with moving average
+                outData = [cbegin;outData(fWidth:end-fWidth+1,:);cend];
+                
+            elseif strcmpi(fType,'gauss') %gaussian filter
+                fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
+                if ~exist('fLength','var') || isempty(fLength)
+                    fLength = round(fSig * 100); %length of gaussian filter
+                end
+                fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
+                kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
+                kernel = kernel / norm(kernel); %normalize kernel
+                outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                
+            elseif strcmpi(fType,'exp') %exponential filter
+                if ~exist('fLength','var') || isempty(fLength)
+                    fLength = ceil(fWidth * 5);
+                end
+                kernel = exponentialFilter(fWidth, fLength);
+                kernel = [zeros(1, length(kernel)), kernel];
+                outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                
+            end
+            
+            % combine patches to output array
+            dataOut(cIdx,:) = outData;
+        end
+    end
+    
 else
     dataOut = dataIn;
 end
