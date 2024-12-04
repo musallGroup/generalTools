@@ -76,7 +76,6 @@ for iSessions = 1 : length(cSessions)
                 end
             end
         end
-
         fprintf('Copy complete. Removing videos from base folder...');
         
         % check for video files and delete
