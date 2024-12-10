@@ -1,7 +1,10 @@
-function [cids, cgs] = readClusterGroupsTSV(filename, sorterType)
-%function [cids, cgs] = readClusterGroupsTSV(filename)
+function [cids_sort, cgs_sort] = readClusterGroupsTSV(filename, sorterType)
+%function [cids_sort, cgs_sort] = readClusterGroupsTSV(filename)
 % cids is length nClusters, the cluster ID numbers
 % cgs is length nClusters, the "cluster group":
+% automatically sorts the output by cluster_id
+%
+% Known labels:
 % - 0 = noise
 % - 1 = mua
 % - 2 = good
@@ -55,4 +58,7 @@ useIdx = isNoise | isMUA | isGood | isUns | isProbMUA | isProbSUA;
 cids = cids(useIdx);
 cgs = cgs(useIdx);
 
+% sort by cluster id
+[cids_sort, sortIdx] = sort(cids);
+cgs_sort = cgs(sortIdx);
 
