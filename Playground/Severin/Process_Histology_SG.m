@@ -8,11 +8,11 @@
 % * remember to run one cell at a time, instead of the whole script at once *
 
 % directory of histology images
-image_folder = 'E:\Histology\SOM exampels\KO_S1';
+image_folder = 'E:\Histology\SOM exampels\KO_V1_SC';
 
 % directory to save the processed images -- can be the same as the above image_folder
 % results will be put inside a new folder called 'processed' inside of this image_folder
-save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\test';
+save_folder = 'E:\Histology\SOM exampels\KO_V1_SC';
 
 % name of images, in order anterior to posterior or vice versa
 % once these are downsampled they will be named ['original name' '_processed.tif']
@@ -41,7 +41,7 @@ microns_per_pixel_after_downsampling = 10;
 % if the images are cropped (image_file_are_individual_slices = false),
 % name to save cropped slices as; e.g. the third cropped slice from the 2nd
 % image containing many slices will be saved as: save_folder/processed/save_file_name02_003.tif
-save_file_name = '133_';
+save_file_name = 'test_';
 
 % increase gain if for some reason the images are not bright enough
 gain = 1; 

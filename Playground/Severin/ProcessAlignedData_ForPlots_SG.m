@@ -3,9 +3,9 @@ minAreaSizeforPlot = 100; %number of pixels in a given area before its plotted o
 colorChannel = 1; %this would be red, green, blue for 1,2,3
 
 % directory of processed image
-serverPath = '\\Fileserver\Allgemein\transfer\for Irene\data';
-localSavePath = 'E:\Histology_AnterogradeALM_Plots';
-serverFolder = 'ALM_SC_03_tifs\C5_TL_GFP\processed\transformations'; %path to transofrmed images
+serverPath = 'E:\Histology\SOM exampels\KO_V1_SC\processed';
+localSavePath = 'E:\Histology\SOM exampels\KO_V1_SC\processed';
+serverFolder = '\transformations'; %path to transofrmed images
 Image_folder = fullfile(serverPath, serverFolder);
 Save_folder = fullfile(localSavePath, serverFolder);
 
@@ -13,27 +13,29 @@ Save_folder = fullfile(localSavePath, serverFolder);
 % directory of AtlasData
 Atlas_folder = 'E:\Histology\'; %path to saved AtlasData
 Atlas_file_name = 'AtlasData';
-Save_name = 'FluorescenceMatrix_';
-Save_name_cumulative = 'FluorescenceMatrixCumulative_';
-Save_name_fig = 'FluorescenceFigure_';
+Save_name = 'KO_V1_SC';
+Save_name_cumulative = 'SOM_';
+Save_name_fig = 'HistoFigure_';
 % Save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\'; %path to folder to save the analyzed data
-
-
-%% only use files where both tif and transformed matlab data exist
 allImages = dir(fullfile(Image_folder,'*.tif'));
 allTransform = dir(fullfile(Image_folder,'*_processed_transform_data.mat'));
 
-% Define a function to extract the numbers from file names using textscan
-extractNumber = @(fileName) textscan(fileName, '%s%s%d', 1, 'Delimiter', '-');
-imgNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allImages(:).name}, 'UniformOutput', false));
-matNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allTransform(:).name}, 'UniformOutput', false));
 
-imUseIdx = ismember(imgNumbers, matNumbers); %check for images that have no transform
-matUseIdx = ismember(matNumbers, imgNumbers(imUseIdx)); %check for transforms that have no images
-
-% only use correct files
-allImages = allImages(imUseIdx);
-allTransform = allTransform(matUseIdx);
+%% only use files where both tif and transformed matlab data exist
+% allImages = dir(fullfile(Image_folder,'*.tif'));
+% allTransform = dir(fullfile(Image_folder,'*_processed_transform_data.mat'));
+% % fileName = allTransform.name;
+% % Define a function to extract the numbers from file names using textscan
+% extractNumber = @(fileName) textscan(fileName, '%s%s%d', 1, 'Delimiter', '-');
+% imgNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allImages(:).name}, 'UniformOutput', false));
+% matNumbers = cellfun(@(c) c{3}, cellfun(extractNumber, {allTransform(:).name}, 'UniformOutput', false));
+% 
+% imUseIdx = ismember(imgNumbers, matNumbers); %check for images that have no transform
+% matUseIdx = ismember(matNumbers, imgNumbers(imUseIdx)); %check for transforms that have no images
+% 
+% % only use correct files
+% allImages = allImages(imUseIdx);
+% allTransform = allTransform(matUseIdx);
 
 %% load atlas data
 full_path_atlas = fullfile(Atlas_folder, Atlas_file_name + ".mat");
@@ -109,12 +111,17 @@ for iSlice = 1:length(allImages)
     % save figure as jpg
     set(h, 'Color', 'w');
     set(h, 'InvertHardcopy', 'off');
-    saveas(h, fullfile(Save_folder, Save_name_fig + string(current_slice) + ".jpg"));
+    saveas(h, fullfile(Save_folder, Save_name + string(current_slice) + ".fig"));
     fprintf('Current slice %i/%i\n', iSlice, length(allImages))
 
     % pause; %you can use this is if you want to look at timages and
     % confirm with a button press
 end
+
+
+
+
+
 
 
 %% Create a table for concatenated fluorescence values
