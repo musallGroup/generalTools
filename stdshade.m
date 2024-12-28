@@ -39,24 +39,13 @@ if strcmpi(avgType, 'mean')
     astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
     astdHigh = amean + astd; %get SEM above mean
     astdLow = amean - astd; %get SEM below mean
-       
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
-        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data
-    end
-    
+           
 elseif strcmpi(avgType, 'median')
     %     amean = nanmedian(amatrix,1); %get man over first dimension
     amean = prctile(amatrix,50,1); %get median as 50th prctile
     astdHigh = prctile(amatrix,75,1); %upper shading range
     astdLow = prctile(amatrix,25,1); %lower shading range
         
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
-        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data        
-    end
 else
     error('unknown average type');
 end
@@ -85,13 +74,24 @@ if any(isnan(amean)) %make multiple patches if there are nans
         
         if ~isempty(cIdx)
             cF = F(cIdx);
-            cM = amean(cIdx);
             cEupper = astdHigh(cIdx);
             cElower = astdLow(cIdx);
+            
+            if smth > 1
+                amean(cIdx) = boxFilter(amean(cIdx),smth); %use boxfilter to smooth data
+                cEupper = boxFilter(cEupper,smth); %use boxfilter to smooth data
+                cElower = boxFilter(cElower,smth); %use boxfilter to smooth data
+            end
+    
             fillOut(x) = fill([cF fliplr(cF)],[cEupper fliplr(cElower)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
         end
     end
 else
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
+        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data
+    end
     fillOut = fill([F fliplr(F)],[astdHigh fliplr(astdLow)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
 end
 if alpha == 1; acolor='k'; end

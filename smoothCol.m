@@ -1,7 +1,7 @@
 function dataOut = smoothCol(dataIn, dim, fWidth, fType, fLength)
 % function to smooth columns of a data matrix 'dataIn'.
 % dataOut = smoothCol(dataIn, dim, fWidth, fType, fLength)
-% fType defines the filter type which is either a box or gaussian filter.
+% fType defines the filter type which is either a box, gaussian or exponential filter.
 % When using a box filter 'fWidth' is the size of the moving average, when
 % using a gaussian filter 'fWidth' defines its full width half maximum.
 % dim is dimension that is smooth over (default is 1st dimension).
@@ -73,38 +73,43 @@ if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
         
         if ~isempty(cIdx)
             useData = dataIn(cIdx,:);
-            if strcmpi(fType,'box') %box filter
-                n = size(useData,1);
-                fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
-                cbegin = cumsum(useData(1:fWidth-2,:),1);
-                cbegin = bsxfun(@rdivide, cbegin(1:2:end,:), (1:2:(fWidth-2))');
-                cend = cumsum(useData(n:-1:n-fWidth+3,:),1);
-                cend = bsxfun(@rdivide, cend(end:-2:1,:), (fWidth-2:-2:1)');
-                outData = conv2(useData,ones(fWidth,1)/fWidth,'full'); %smooth trace with moving average
-                outData = [cbegin;outData(fWidth:end-fWidth+1,:);cend];
-                
-            elseif strcmpi(fType,'gauss') %gaussian filter
-                fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
-                if ~exist('fLength','var') || isempty(fLength)
-                    fLength = round(fSig * 100); %length of gaussian filter
-                end
-                fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
-                kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
-                kernel = kernel / norm(kernel); %normalize kernel
-                outData = conv2(useData,kernel','same'); %smooth trace with gaussian
-                
-            elseif strcmpi(fType,'exp') %exponential filter
-                if ~exist('fLength','var') || isempty(fLength)
-                    fLength = ceil(fWidth * 5);
-                end
-                kernel = exponentialFilter(fWidth, fLength);
-                kernel = [zeros(1, length(kernel)), kernel];
-                outData = conv2(useData,kernel','same'); %smooth trace with gaussian
-                
-            end
+            n = size(useData,1);
             
-            % combine patches to output array
-            dataOut(cIdx,:) = outData;
+            if n > fWidth
+                if strcmpi(fType,'box') %box filter
+                    fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
+                    cbegin = cumsum(useData(1:fWidth-2,:),1);
+                    cbegin = bsxfun(@rdivide, cbegin(1:2:end,:), (1:2:(fWidth-2))');
+                    cend = cumsum(useData(n:-1:n-fWidth+3,:),1);
+                    cend = bsxfun(@rdivide, cend(end:-2:1,:), (fWidth-2:-2:1)');
+                    outData = conv2(useData,ones(fWidth,1)/fWidth,'full'); %smooth trace with moving average
+                    outData = [cbegin;outData(fWidth:end-fWidth+1,:);cend];
+                    
+                elseif strcmpi(fType,'gauss') %gaussian filter
+                    fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
+                    if ~exist('fLength','var') || isempty(fLength)
+                        fLength = round(fSig * 100); %length of gaussian filter
+                    end
+                    fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
+                    kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
+                    kernel = kernel / norm(kernel); %normalize kernel
+                    outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                    
+                elseif strcmpi(fType,'exp') %exponential filter
+                    if ~exist('fLength','var') || isempty(fLength)
+                        fLength = ceil(fWidth * 5);
+                    end
+                    kernel = exponentialFilter(fWidth, fLength);
+                    kernel = [zeros(1, length(kernel)), kernel];
+                    outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                end
+                
+                % combine patches to output array
+                dataOut(cIdx,:) = outData;
+                
+            else
+                dataOut(cIdx,:) = useData;
+            end
         end
     end
     
