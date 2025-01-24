@@ -37,11 +37,21 @@ digitalData = readtable(digitalFile);
 
 %% get digital triggers from photometry data
 
-trigIdx = strcmpi(digitalData.Var1, trialTriggerChan); %events from trigger line
+if any(strcmpi(digitalData.Properties.VariableNames, 'DigitalIOName'))
+    var1 = 'DigitalIOName';
+    var3 = 'DigitalIOState';
+    var4 = 'SystemTimestamp';
+else
+    var1 = 'var1';
+    var3 = 'var3';
+    var4 = 'var4';
+end
+
+trigIdx = strcmpi(digitalData.(var1), trialTriggerChan); %events from trigger line
 
 % get times of the trigger line from system clock
-trialEvents = digitalData.Var4(trigIdx);
-if find(strcmpi(digitalData.Var3(trigIdx), 'false'), 1) == 1
+trialEvents = digitalData.(var4)(trigIdx);
+if find(strcmpi(digitalData.(var3)(trigIdx), 'false'), 1) == 1
     trialEvents(1) = [];
 end
 trialEvents = round((trialEvents - sessionStart) * 1000); %these are system timestamps in miliseconds after session start
