@@ -21,7 +21,7 @@ def compressNPXfile(cFile):
     # code for decompression
     # r = Reader()
     # r.open(cBinFile, chFile)
-    # r.tofile(testFile)
+    # r.tofile(binFile)
     # r.close()
 
 # =========================================================

@@ -5,6 +5,7 @@ function S = gt_readSpikeGLXmeta(vcFname)
 % file. 
 %
 % From James Jun, 2016-12-31
+% Modified from Nick Steinmetz's spikes repo by Simon, June 2023
 
 S = [];
 viRef_imec3 = [37 76 113 152 189 228 265 304 341 380];
