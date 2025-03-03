@@ -103,7 +103,7 @@ end
 fprintf('Copy complete. Removing large binary and rez2 files from base folder...');
 delFiles = dir(fullfile(basePath, '**', '*.ap.bin'));
 delFiles = [delFiles; dir(fullfile(basePath, '**', '*.ap.cbin'))];
-delFiles = [delFiles; dir(fullfile(basePath, '**', '*.rez2.mat'))];
+delFiles = [delFiles; dir(fullfile(basePath, '**', 'rez2.mat'))];
 for iFiles = 1 : length(delFiles)
     delete(fullfile(delFiles(iFiles).folder,delFiles(iFiles).name));
 end
