@@ -14,6 +14,14 @@ function TwoPhotonToServer(basePath, targPath, targPath2, keepLocal)
 % the local data will not be deleted from the local PC.
 %
 % If keepLocal is true, local files will not be deleted after copying.
+%
+% Example usage:
+% basePath = 'F:\2p_PuffyPenguin\320';
+% targPath = 'D:\';
+% targPath2 = 'H:\';
+% keepLocal = false;
+% TwoPhotonToServer(basePath, targPath, targPath2, keepLocal);
+
 
 delSize = 1; %size in GB of TIF stacks that should be removed
 
