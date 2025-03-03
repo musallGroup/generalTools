@@ -102,8 +102,9 @@ for iSessions = 1 : length(cSessions)
                     if ~any(strcmpi(targFiles, sourceFiles(iFiles)))
                         cFile = fullfile(cFolder, sourceFiles{iFiles});
                         targFile = fullfile(targFolder, sourceFiles{iFiles});
+                        fprintf('Copying file %s: %.0f/%.0f ...', cFile, iFiles, length(sourceFiles))
                         copyfile(cFile, targFile);
-                        fprintf('Copied file %s: %.0f/%.0f\n', cFile, iFiles, length(sourceFiles))
+                        disp('done!');
                     end
                 end
             end
