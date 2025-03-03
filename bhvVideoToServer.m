@@ -1,11 +1,13 @@
-function bhvVideoToServer(basePath, serverPath, checkTape)
+function bhvVideoToServer(basePath, serverPath, checkTape, keepLocal)
 % Function to move behavioral data from bpod paradimgs from local PC to the
 % server. Will copy all data but only delete movies from the base folder.
 % basePath should point to the folder of a specific mouse/paradigm
 % combination (e.g. E:\Bpod Local\Data\2482\PuffyPenguin\)
 % serverPath should be the server partition where data should be moved
-% ('data', 'lts', or 'lts2'). If checkTape is true, files are only covered 
-% if they are not on the tape drive already.
+% ('data', 'lts', or 'lts2'). 
+% If checkTape is true, files are only covered if they are not on the tape 
+% drive already.
+% If keepLocal is true, local files will not be deleted after copying.
 %
 % example usage:
 % basePath = 'E:\Bpod Local\Data\2482\PuffyPenguin';
@@ -15,6 +17,10 @@ function bhvVideoToServer(basePath, serverPath, checkTape)
 
 if ~exist('checkTape' , 'var') || isempty(checkTape)
     checkTape = false;
+end
+
+if ~exist('keepLocal' , 'var') || isempty(keepLocal)
+    keepLocal = false;
 end
 
 if ~exist('serverPath', 'var') || isempty(serverPath)
@@ -103,13 +109,18 @@ for iSessions = 1 : length(cSessions)
         end
         
         % check if local file can be deleted
-        if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && v1.Duration == v2.Duration)
-            clear v1 v2
-            delete(sourceFile); %only delete local file if there is a copy on the server
-            fprintf('Removed local file %s\n', sourceFile);
+        if ~keepLocal
+            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && v1.Duration == v2.Duration)
+                clear v1 v2
+                delete(sourceFile); %only delete local file if there is a copy on the server
+                fprintf('Removed local file %s\n', sourceFile);
+            else
+                clear v1 v2
+                error('something very weird happened - something wrong with server communication or server full??');
+            end
         else
             clear v1 v2
-            error('something very weird happened - something wrong with server communication or server full??');
+            fprintf('Keeping local file %s on local PC\n', sourceFile);
         end
     end
 end
