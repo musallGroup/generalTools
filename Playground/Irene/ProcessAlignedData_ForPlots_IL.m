@@ -443,7 +443,7 @@ histologyPath = 'E:\Histology_AnterogradeALM_Plots\';
 fileNames = 'ALM_SC_*'; 
 
 if ~exist('AtlasData', 'var')
-    Atlas_folder = 'C:\Users\abourachid\images _by_order\processed\transformations';
+    Atlas_folder = 'E:\Histology_Test';
     Atlas_file_name = 'AtlasData';
     Atlas_FullPath_File = fullfile(Atlas_folder, Atlas_file_name);
     AtlasData = load(Atlas_FullPath_File);

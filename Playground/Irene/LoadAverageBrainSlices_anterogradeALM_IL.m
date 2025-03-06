@@ -132,7 +132,7 @@ for iSteps = 1 : length(brainSteps)
 end
 
 %% Visualize the result for one brain
-figure
+figure;
 iBrains = 4; %brain of interest
 cFile = fullfile(brainFiles(iBrains).folder, brainFiles(iBrains).name);
 load(cFile, 'avgSliceData', 'sliceSteps');
@@ -167,10 +167,6 @@ for iSteps = 1 : length(sliceSteps)
         pause;
     end
 end
-
-
-
-
 
 
 
