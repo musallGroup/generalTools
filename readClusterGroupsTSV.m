@@ -1,7 +1,10 @@
-function [cids, cgs] = readClusterGroupsTSV(filename, sorterType)
-%function [cids, cgs] = readClusterGroupsTSV(filename)
+function [cids_sort, cgs_sort] = readClusterGroupsTSV(filename, sorterType)
+%function [cids_sort, cgs_sort] = readClusterGroupsTSV(filename)
 % cids is length nClusters, the cluster ID numbers
 % cgs is length nClusters, the "cluster group":
+% automatically sorts the output by cluster_id
+%
+% Known labels:
 % - 0 = noise
 % - 1 = mua
 % - 2 = good
@@ -27,14 +30,23 @@ isUns = cellfun(@(x)strcmp(x,'unsorted'),C{2}(2:end));
 isProbMUA = cellfun(@(x)strcmp(x,'pMUA'),C{2}(2:end));
 isProbSUA = cellfun(@(x)strcmp(x,'pSUA'),C{2}(2:end));
 
-if strcmpi(sorterType, 'phy')
-    isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
-elseif strcmpi(sorterType, 'sortingview')
-    isGood = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+% if strcmpi(sorterType, 'phy')
+%     isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
+% elseif strcmpi(sorterType, 'sortingview')
+%     isGood = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+% end
+
+%check if annotation follows phy or sortingview logic
+a = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
+b = cellfun(@(x)strcmpi(x,'SUA'),C{2}(2:end));
+if sum(a) > sum(b)
+    isGood = a;
+else
+    isGood = b;
 end
     
 % create labels
-cgs = zeros(size(cids));
+cgs = zeros(size(cids), 'single');
 cgs(isMUA) = 1;
 cgs(isGood) = 2;
 cgs(isUns) = 3;
@@ -46,4 +58,7 @@ useIdx = isNoise | isMUA | isGood | isUns | isProbMUA | isProbSUA;
 cids = cids(useIdx);
 cgs = cgs(useIdx);
 
+% sort by cluster id
+[cids_sort, sortIdx] = sort(cids);
+cgs_sort = cgs(sortIdx);
 

@@ -19,6 +19,12 @@ if ~exist('plotAlpha','var') || isempty(plotAlpha)
     plotAlpha = 1;
 end
 
+% make sure we are using column vectors
+xVals = xVals(:);
+dataIn = dataIn(:);
+dataUpper = dataUpper(:);
+dataLower = dataLower(:);
+
 % do smoothing if requested
 if smth > 1
     dataIn = boxFilter(dataIn,smth); %use boxfilter to smooth data
@@ -33,12 +39,6 @@ if ~ishold
 end
 hold on;
 
-
-% make sure we are using column vectors
-xVals = xVals(:);
-dataIn = dataIn(:);
-dataUpper = dataUpper(:);
-dataLower = dataLower(:);
 
 
 if any(isnan(dataIn)) %make multiple patches if there are nans
@@ -82,9 +82,9 @@ function dataOut = boxFilter(dataIn, fWidth)
 
 fWidth = fWidth - 1 + mod(fWidth,2); %make sure filter length is odd
 dataStart = cumsum(dataIn(1:fWidth-2),2);
-dataStart = dataStart(1:2:end) ./ (1:2:(fWidth-2));
+dataStart = dataStart(1:2:end) ./ (1:2:(fWidth-2))';
 dataEnd = cumsum(dataIn(length(dataIn):-1:length(dataIn)-fWidth+3),2);
-dataEnd = dataEnd(end:-2:1) ./ (fWidth-2:-2:1);
+dataEnd = dataEnd(end:-2:1) ./ (fWidth-2:-2:1)';
 dataOut = conv(dataIn,ones(fWidth,1)/fWidth,'full');
 dataOut = [dataStart;dataOut(fWidth:end-fWidth+1);dataEnd];
 

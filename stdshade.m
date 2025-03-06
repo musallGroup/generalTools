@@ -22,7 +22,7 @@ if exist('avgType','var')==0 || isempty(avgType)
 end
 
 if exist('F','var')==0 || isempty(F)
-   F = 1:size(amatrix,1);
+   F = 1:size(amatrix,2);
 end
 
 if exist('smth','var'); if isempty(smth); smth=1; end
@@ -36,28 +36,19 @@ end
 if strcmpi(avgType, 'mean')
     amean = nanmean(amatrix,1); %get man over first dimension
     % astd = nanstd(amatrix,[],1); % to get std shading
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-    end
     astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
     astdHigh = amean + astd; %get SEM above mean
     astdLow = amean - astd; %get SEM below mean
-    
+           
 elseif strcmpi(avgType, 'median')
-%     amean = nanmedian(amatrix,1); %get man over first dimension
+    %     amean = nanmedian(amatrix,1); %get man over first dimension
     amean = prctile(amatrix,50,1); %get median as 50th prctile
-    
-    if smth > 1
-        amean = boxFilter(amean,smth); %use boxfilter to smooth data
-    end
     astdHigh = prctile(amatrix,75,1); %upper shading range
     astdLow = prctile(amatrix,25,1); %lower shading range
-
+        
 else
     error('unknown average type');
 end
-
-
 
 if ~exist('alpha','var') || isempty(alpha)
     alpha = 1;
@@ -83,17 +74,28 @@ if any(isnan(amean)) %make multiple patches if there are nans
         
         if ~isempty(cIdx)
             cF = F(cIdx);
-            cM = amean(cIdx);
             cEupper = astdHigh(cIdx);
             cElower = astdLow(cIdx);
+            
+            if smth > 1
+                amean(cIdx) = boxFilter(amean(cIdx),smth); %use boxfilter to smooth data
+                cEupper = boxFilter(cEupper,smth); %use boxfilter to smooth data
+                cElower = boxFilter(cElower,smth); %use boxfilter to smooth data
+            end
+    
             fillOut(x) = fill([cF fliplr(cF)],[cEupper fliplr(cElower)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
         end
     end
 else
+    if smth > 1
+        amean = boxFilter(amean,smth); %use boxfilter to smooth data
+        astdHigh = boxFilter(astdHigh,smth); %use boxfilter to smooth data
+        astdLow = boxFilter(astdLow,smth); %use boxfilter to smooth data
+    end
     fillOut = fill([F fliplr(F)],[astdHigh fliplr(astdLow)],acolor, 'FaceAlpha', alpha, 'linestyle','none');
 end
 if alpha == 1; acolor='k'; end
-lineOut = plot(F,amean, 'color', acolor,'linewidth',1.5); %% change color or linewidth to adjust mean line
+lineOut = plot(F,amean, '-', 'MarkerFaceColor', 'w', 'color', acolor, 'linewidth',1.5); %% change color or linewidth to adjust mean line
 
 if check
     hold off;

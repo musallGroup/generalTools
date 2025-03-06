@@ -1,4 +1,4 @@
-function nhline(x,varargin)
+function lines = nhline(x,varargin)
 
 a = gca;
 if ishold(a)
@@ -8,7 +8,7 @@ else
 end
 
 for xx = 1 : length(x)
-    plot(a.XLim,[x(xx),x(xx)],varargin{:});
+    lines(xx) = plot(a.XLim,[x(xx),x(xx)],varargin{:});
 end
 
 if checker

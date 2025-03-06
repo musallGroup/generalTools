@@ -2,6 +2,7 @@ function out = insertColumns(X, cIdx, cVal, cWidth)
 %function to insert columns filled with 'cVal' at the locations defined by
 % 'cIdx' into the matrix X. cWidth defines the width of each inserted
 % column.
+% smusall, 02.2022
 
 if ~exist('cWidth', 'var') || isempty(cWidth)
     cWidth = 1;

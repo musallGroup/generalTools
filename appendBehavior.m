@@ -11,6 +11,10 @@ end
 dFields = fieldnames(data);
 dFields(strcmpi(dFields,'Settings')) = [];
 
+if ~isfield(data, 'nTrials')
+    data.nTrials = length(data.(dFields{1}));
+end
+
 %% cycle trough fields and add current data to bhv structure. Create new bhv entries if required.
 structCases = {'RawEvents' 'RawData'}; %cases at which substructs are present. Go one level depper to correctly append them together.
 for iFields = 1:size(dFields,1)

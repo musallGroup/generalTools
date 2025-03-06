@@ -1,4 +1,4 @@
-function bhvVideoToTape(basePath, targPath)
+function bhvVideoToTape(basePath, targPath, removeWidefieldOnly)
 % Function to move behavioral data from bpod paradimgs into a tapedrive folder.
 % Will copy all data but only delete movies from the base folder.
 % basePath should point to the folder of a specific mouse/paradigm
@@ -7,9 +7,13 @@ function bhvVideoToTape(basePath, targPath)
 % identify where data should be copied to. Otherwise, the function assumes
 % that there is a folder RAWDATA on the same server and will move data
 % there (e.g. \\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin\).
-
+%
 % basePath = '\\naskampa\DATA\BpodBehavior\F129\PuffyPenguin';
-% targPath = '\\naskampa\DATA\RAWDATA\F129\PuffyPenguin';
+% targPath = '\\naskampa\DATA\RAWDATA\BpodBehavior\F129\PuffyPenguin';
+
+if ~exist('removeWidefieldOnly', 'var') || isempty(removeWidefieldOnly)
+    removeWidefieldOnly = false; %flag to only remove widefield data from source
+end
 
 if ~exist('targPath', 'var') || isempty(targPath)
     %assume that targPath is a folder 'RAWDATA' on the same folder as the basePath
@@ -72,14 +76,15 @@ for iSessions = 1 : length(cSessions)
                 end
             end
         end
-
         fprintf('Copy complete. Removing videos from base folder...');
         
         % check for video files and delete
-        cFiles = dir([cFolder filesep '*.avi']);
-        cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
-        cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
-        cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
+        cFiles = dir([cFolder filesep '*uint16.dat']);
+        if ~removeWidefieldOnly %if all videos should be removed
+            cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
+            cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
+            cFiles = [cFiles; dir([cFolder filesep '*.avi'])];
+        end
         for iFiles = 1 : length(cFiles)
             delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
         end
