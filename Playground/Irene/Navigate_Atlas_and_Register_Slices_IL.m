@@ -7,15 +7,15 @@
 
 
 % directory of histology
-processed_images_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_06_tifs\C5_TL_TdTomato\processed'; 
+processed_images_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\test\processed'; 
 
 % name the saved probe points, to avoid overwriting another set of probes going in the same folder
 probe_save_name_suffix = ''; 
 
 % directory of reference atlas files
-annotation_volume_location = 'C:\Users\abourachid\Documents\GitHub\allenCCF\annotation_volume_10um_by_index.npy';
-structure_tree_location = 'C:\Users\abourachid\Documents\GitHub\allenCCF\structure_tree_safe_2017.csv';
-template_volume_location = 'C:\Users\abourachid\Documents\GitHub\allenCCF\template_volume_10um.npy';
+annotation_volume_location = 'E:\Histology_Test\annotation_volume_10um_by_index.npy';
+structure_tree_location = 'C:\Users\kampaimaging\Documents\GitHub\allenCCF\structure_tree_safe_2017.csv';
+template_volume_location = 'E:\Histology_Test\template_volume_10um.npy';
 
 % plane to view ('coronal', 'sagittal', 'transverse')
 plane = 'coronal';

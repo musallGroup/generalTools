@@ -5,17 +5,18 @@ colorChannel = 1; %this would be red, green, blue for 1,2,3
 % directory of processed image
 serverPath = '\\Fileserver\Allgemein\transfer\for Irene\data\';
 localSavePath = 'E:\test';
-serverFolder = 'test\'; %path to transofrmed images
+serverFolder = '\ALM_SC_03_tifs\C5_TL_GFP\processed\transformations\'; %path to transofrmed images
 Image_folder = fullfile(serverPath, serverFolder);
-Save_folder = fullfile(localSavePath, serverFolder);
+% Save_folder = fullfile(localSavePath, serverFolder);
+Save_folder = 'E:\Histology_AnterogradeALM_Contra\ALM_SC_03';
 
 
 % directory of AtlasData
 Atlas_folder = 'E:\Histology_Test\'; %path to saved AtlasData
 Atlas_file_name = 'AtlasData';
-Save_name = 'FluorescenceMatrix_';
-Save_name_cumulative = 'FluorescenceMatrixCumulative_';
-Save_name_fig = 'FluorescenceFigure_';
+Save_name = 'FluorescenceMatrixContra_';
+Save_name_cumulative = 'FluorescenceMatrixCumulativeIpsi_';
+Save_name_fig = 'FluorescenceFigureContra_';
 % Save_folder = '\\Fileserver\Allgemein\transfer\for Irene\data\ALM_SC_04_tifs\C5_TL_GFP\processed\transformations\'; %path to folder to save the analyzed data
 
 
@@ -44,7 +45,7 @@ tv = AtlasData.allData.tv;
     
 %% define steps for averaging slices to a certain range in the Allen atlas.
 % stepSize = 10 would mean we combine all slices in a range of 10 slices in
-% the Allen reference.
+% Allen ref atlas
 stepSize = 10;
 sliceSteps = 1: stepSize : size(av,1);
 avgSliceData = cell(1, length(sliceSteps));
@@ -60,14 +61,11 @@ set(h, 'PaperPositionMode', 'manual');
 set(h, 'PaperPosition', [0, 0, 29.7, 21]);
 for iSlice = 1:length(allImages)
 
-    %Image_file_name = 'Composite9_GFP-tdTomato_processed_transform_data';   
     Transform_file_name = allTransform(iSlice).name;
     full_path_file = fullfile(Image_folder, Transform_file_name);
     transformData = load(full_path_file);
     current_slice = transformData.save_transform.allen_location{1};
 
-    % directory of Transformed Image
-    %Transformed_image = imread('Y:\Histology_Musall\Histology_Irene\Moritz\M133_Tiff\processed3\transformations\Composite13_GFP-tdTomato_processed_transformed.tif');
     Transformed_image = imread(fullfile(Image_folder, allImages(iSlice).name));
     subplot(1,3,3); cla;
     subplot(1,3,2); cla;
@@ -113,23 +111,47 @@ for iSlice = 1:length(allImages)
     concatenatedTable = [];
     for cID = 1: length(RegionsID)
 
-        locID = squeeze(av(current_slice,:,:)) == RegionsID(cID); %get mask for current area
-        cData = arrayShrink(Transformed_image, ~locID, 'merge'); %this function extracts the pixels from all channels in the current area
+        locID = squeeze(av(current_slice,:,:)) == RegionsID(cID); % get mask for current area
+
+       % Split the mask into left and right halves
+       % Step 1: Get the bounding box of the selected region
+        regionProps = regionprops(locID, 'BoundingBox');
+        if ~isempty(regionProps)
+            boundingBox = regionProps.BoundingBox;
+            midX = round(boundingBox(1) + boundingBox(3) / 2); % Midpoint along the x-axis
+        else
+            warning('Region %d has no valid bounding box.', RegionsID(cID));
+            continue;
+        end
+
+        % Step 2: Split the mask into left and right halves
+        leftHalf = false(size(locID));
+        leftHalf(:, 1:midX) = locID(:, 1:midX); % Left half only
+
+        rightHalf = false(size(locID));
+        rightHalf(:, midX+1:end) = locID(:, midX+1:end); % Right half only
+
+        % Step 3: Select the half to analyze
+        selectedLocID = rightHalf; % Change to 'leftHalf' for left-side analysis
+
+        % Step 4: Process the selected mask
+        cData = arrayShrink(Transformed_image, ~selectedLocID, 'merge'); 
         meanFluorescence(cID,:) = mean(cData, 1);
+
         regionName(cID) = st.name{RegionsID(cID)};
         regionAcr(cID) = st.acronym{RegionsID(cID)};
         regionId(cID) = RegionsID(cID);
 
-        % show area outlines on fluorescent image
+        % Step 5: Plot the area outlines for the selected half
         subplot(1,3,2); hold on;
-        a = bwboundaries(locID); %outline of selected area
+        a = bwboundaries(selectedLocID); % Compute boundaries for the selected mask
         for x = 1 : length(a)
             if size(a{x},1) > minAreaSizeforPlot
-                plot(smooth(a{x}(:,2),10),smooth(a{x}(:,1),10),'w', 'linewidth', 0.1)
+                plot(smooth(a{x}(:,2),10), smooth(a{x}(:,1),10), 'w', 'linewidth', 0.1);
             end
         end
-    end
-    drawnow;
+   end
+     drawnow;
     
     if ~exist(Save_folder, 'dir')
         mkdir(Save_folder);
@@ -148,7 +170,7 @@ for iSlice = 1:length(allImages)
 end
 
 %save avgSliceData to file
-save(fullfile(Save_folder, 'avgSliceData.mat'), 'avgSliceData', 'avgSliceCnt', 'sliceSteps');
+save(fullfile(Save_folder, 'avgSliceDataIpsi.mat'), 'avgSliceData', 'avgSliceCnt', 'sliceSteps');
 
 
 %% Create a table for concatenated fluorescence values
@@ -156,7 +178,7 @@ Atlas_folder = 'E:\Histology_Test';
 Atlas_file_name = 'AtlasData';
 Atlas_FullPath_File = fullfile(Atlas_folder, Atlas_file_name);
 AtlasFile = load(Atlas_FullPath_File);
-Results_folder = 'E:\test';
+Results_folder = 'E:\Histology_AnterogradeALM_Ipsi\ALM_SC_03';
 
 av = AtlasFile.allData.av;
 st = AtlasFile.allData.st;
@@ -197,8 +219,8 @@ save(fullfile(Results_folder, [Save_name_cumulative '.mat']), 'fluorescenceMatri
 
 % Need to change this in order to apply it to several datasets
 
-Results_folder = 'E:\Histology_Test\ALM_SC_05';
-Results_file_name = 'FluorescenceMatrixCumulative_';
+Results_folder = 'E:\Histology_AnterogradeALM_Ipsi\ALM_SC_03\results';
+Results_file_name = 'FluorescenceMatrixCumulativeIpsi_';
 Results_folder_File = fullfile(Results_folder, Results_file_name);
 CumulativeMatrix = load(Results_folder_File);
 
@@ -472,5 +494,3 @@ for iSCRegion = 1:length(fieldsSC)
     ylabel('Mean Fluorescence');
     title(cat(2, 'AP distribution of ALM projetions into ',(fieldsSC{iSCRegion})));
 end
-
-
