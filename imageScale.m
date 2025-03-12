@@ -1,4 +1,4 @@
-function [mapImg, cRange] = imageScale(cMap, cRange, twoSided)
+function [mapImg, cRange] = imageScale(cMap, cRange, twoSided, colors)
 % quick command to plot image and set NaNs to be transparent. cRange
 % defines a symmetric color range, based on top 'cRange' percentile in the image.
 % 'twoSided' determines whether color range should be positive and negative
@@ -13,6 +13,10 @@ if ~exist('twoSided', 'var')
     twoSided = true;
 end
 
+if ~exist('colors', 'var')
+    colors = colormap_blueblackred;
+end
+
 if twoSided
     cRange = [-cRange cRange];
 else
@@ -21,7 +25,10 @@ end
 
 mapImg = imshow(squeeze(cMap),cRange, 'InitialMagnification', 'fit');
 set(mapImg,'AlphaData',~isnan(mapImg.CData)); %make NaNs transparent.
-colormap(mapImg.Parent, colormap_blueblackred);
+if ~strcmp(colors, "gray")
+    colormap(mapImg.Parent, colors);
+end
+
 
 
 
