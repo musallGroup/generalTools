@@ -3,11 +3,12 @@ serverPath = '\\Fileserver\Allgemein\transfer\for Irene\TripleRetro-Exports\3C-R
 SavePath = 'E:\Histology_NeuronDistributionALM\';
 slicePath = '*.mat';
 conversionFactor = 0.5681821; % conversion factor um/pixel
+depthThreshold = 350; % depth threshold in micrometers
 allSlices = dir([serverPath]);
 nrSlices = length(allSlices);
 minCellSize = 50; %min size of each ROI in pixels to be counted
 maxCellSize = 300; %max size of each ROI in pixels to be counted
-cellOverlapThreshold = 0.3; %amount of overlap two declare 2 cells to be the same
+cellOverlapThreshold = 0.3; %amount of overlap to declare 2 cells to be the same
 
 %% Load Data
 allData = zeros(2280, 1744, nrSlices, 3); %this is pixels by slices by color channels
@@ -25,7 +26,7 @@ end
 %% find cells for each brain
 tic
 allColorIdx = cell(1, nrSlices); %color index for all cells from each slice
-allCellMasks = cell(1, nrSlices); %binary masks for each cell, color channel and slice
+allCellMasks = cell(1, nrSlices); %binary masks for each cell, color channel, and slice
 for iSlice = 1:nrSlices
 
     % general variables for current slice
@@ -43,8 +44,12 @@ for iSlice = 1:nrSlices
             cMask = allData(:,:,iSlice, iColor) == iCells; %mask for current cell
             cMask = logical(arrayResize(cMask, 2)); %downsample by 2
             
-            % check if cell counts as a real cell and collect in larger array
-            if sum(cMask(:)) > minCellSize && sum(cMask(:)) < maxCellSize
+            % Calculate depth of the current cell (similar to second code)
+            [y, x] = find(cMask); %find coordinate of pixels belonging to iCell
+            cellDepth = median(y) * conversionFactor; % calculate the median depth
+            
+            % check if cell counts as a real cell, is within size range, and is deeper than 350 um
+            if sum(cMask(:)) > minCellSize && sum(cMask(:)) < maxCellSize && cellDepth >= depthThreshold
                 colorIdx = [colorIdx, iColor]; %1 means red, 2 means green, 3 means blue
                 if isempty(cellMasks)
                     cellMasks = cMask;
@@ -55,7 +60,7 @@ for iSlice = 1:nrSlices
         end
     end
     
-    % give some feedback for current slice
+    % give some feedback for the current slice
     totalCells = size(cellMasks,3); %total number of neurons in this slice
     fprintf('Found %i cells for slice %i. %i in red, %i in green, %i in blue\n', ...
         totalCells, iSlice, sum(colorIdx ==1), sum(colorIdx == 2), sum(colorIdx == 3));
@@ -71,11 +76,11 @@ for iSlice = 1:nrSlices
             
             cIdx = find(mean(allCellPx) > cellOverlapThreshold); %check for overlap
             
-            % keep color identify for current cell
+            % keep color identify for the current cell
             mergeColorIdx(colorIdx(cIdx), iCells) = true;
             
             % this is to avoid double-counting multi-color neurons
-            cIdx = cIdx(cIdx ~= iCells); %remove current cell from the index
+            cIdx = cIdx(cIdx ~= iCells); %remove the current cell from the index
             
             rejIdx{iCells} = cIdx; %store overlapping cells in array as a control
             useIdx(cIdx) = false; %cells that are accounted for can be removed from useIdx
@@ -83,7 +88,7 @@ for iSlice = 1:nrSlices
     end
     nrRealCells = sum(useIdx); %number of unique cells
     
-    % isolate real neurons for current slice
+    % isolate real neurons for the current slice
     allColorIdx{iSlice} = mergeColorIdx(:, useIdx);
     
     % get masks for cells as output
@@ -160,7 +165,26 @@ labels = {'Only Blue', 'Blue and Green', 'Blue and Red', 'Blue, Red and Green'};
 figure;
 pie(bluePieValues, labels);
 title('Distribution of Blue Neurons by Color Overlap');
+%% Pie charts with values
 
+greenPieValues = greenPieValues / sum(greenPieValues);
+redPieValues = redPieValues / sum(redPieValues);
+bluePieValues = bluePieValues / sum(bluePieValues);
 
+% Make Pie Charts with results for green
+figure;
+pie(greenPieValues);
+legend(labels, 'Location', 'eastoutside');
+title('Distribution of Green Neurons by Color Overlap');
 
+% Make Pie Charts with results for Red
+figure;
+pie(redPieValues);
+legend(labels, 'Location', 'eastoutside');
+title('Distribution of Red Neurons by Color Overlap');
 
+% Make Pie Charts with results for Blue
+figure;
+pie(bluePieValues);
+legend(labels, 'Location', 'eastoutside');
+title('Distribution of Blue Neurons by Color Overlap');

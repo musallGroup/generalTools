@@ -22,11 +22,10 @@ function TwoPhotonToServer(basePath, targPath, targPath2, keepLocal)
 % keepLocal = false;
 % TwoPhotonToServer(basePath, targPath, targPath2, keepLocal);
 
-
 delSize = 1; %size in GB of TIF stacks that should be removed
 
 if ~exist('keepLocal' , 'var') || isempty(keepLocal)
-    keepLocal = false;
+    keepLocal = true;
 end
 
 % check if second target is given and exists
@@ -113,11 +112,13 @@ for iSessions = 1 : length(cSessions)
 
         %% check for large TIF stacks and delete
         cFiles = dir([cFolder filesep '*tif']);
+%         a{iSessions} = cFiles([cFiles.bytes] > 1024^3); %potential tif stacks
+
         if ~keepLocal
             disp('Removing large TIF stacks from base folder.');
             for iFiles = 1 : length(cFiles)
                 if cFiles(iFiles).bytes > (1024^3 * delSize) %file is larger than minimal size in GB - remove
-                    delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
+%                     delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
                     fprintf('Deleted file %s\n', cFiles(iFiles).name)
                 end
             end
