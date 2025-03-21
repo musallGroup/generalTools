@@ -118,7 +118,7 @@ for iSessions = 1 : length(cSessions)
             disp('Removing large TIF stacks from base folder.');
             for iFiles = 1 : length(cFiles)
                 if cFiles(iFiles).bytes > (1024^3 * delSize) %file is larger than minimal size in GB - remove
-%                     delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
+                    delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
                     fprintf('Deleted file %s\n', cFiles(iFiles).name)
                 end
             end
