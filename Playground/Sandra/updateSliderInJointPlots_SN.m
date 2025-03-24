@@ -1,7 +1,7 @@
 function updateSliderInJointPlots_SN(src, event, hText, corr_mat_plot, connections, diffusion_plot, timer_plot, perf_ax, iSeg, CC_sorted, diffmap, speed, angles, region_per_component, line_strengths, thickness, color_list, transparency, opts)
-    tic
     frameIdx = round(get(src, 'Value')); % Get slider value
-    set(hText, 'String', sprintf(['time ' num2str(opts.tC(frameIdx))])); % Update text
+    set(hText, 'String', sprintf(['time ' num2str(frameIdx)])); % Update text
+    % set(hText, 'String', sprintf(['time ' num2str(opts.tC(frameIdx))])); % Update text
     
     set(corr_mat_plot, 'CData', CC_sorted(:, :, iSeg, frameIdx));
 
@@ -34,15 +34,20 @@ function updateSliderInJointPlots_SN(src, event, hText, corr_mat_plot, connectio
 
     set(diffusion_plot, 'XData', diffmap(1, frameIdx, iSeg), 'YData', diffmap(2,frameIdx,iSeg), 'ZData', diffmap(3,frameIdx,iSeg));
 
-    set(timer_plot{1}, 'XData', opts.tC(frameIdx), 'YData', opts.Corr_strength{iSeg}(frameIdx));
-    set(timer_plot{2}, 'XData', opts.tC(frameIdx), 'YData', opts.perfC(frameIdx));
+    set(timer_plot{1}, 'XData', frameIdx, 'YData', opts.Corr_strength{iSeg}(frameIdx));
+    set(timer_plot{2}, 'XData', frameIdx, 'YData', opts.perfC(frameIdx));
+    % set(timer_plot{1}, 'XData', opts.tC(frameIdx), 'YData', opts.Corr_strength{iSeg}(frameIdx));
+    % set(timer_plot{2}, 'XData', opts.tC(frameIdx), 'YData', opts.perfC(frameIdx));
     if frameIdx < length(opts.tC) - opts.diff_lag
-        set(timer_plot{3}, 'XData', opts.tC(frameIdx), 'YData', speed(frameIdx));
-        set(timer_plot{4}, 'XData', opts.tC(frameIdx), 'YData', angles(frameIdx));
+        set(timer_plot{3}, 'XData', frameIdx, 'YData', speed(frameIdx));
+        set(timer_plot{4}, 'XData', frameIdx, 'YData', angles(frameIdx));
+        % set(timer_plot{3}, 'XData', opts.tC(frameIdx), 'YData', speed(frameIdx));
+        % set(timer_plot{4}, 'XData', opts.tC(frameIdx), 'YData', angles(frameIdx));
     else
-        set(timer_plot{3}, 'XData', opts.tC(end - opts.diff_lag), 'YData', speed(end));
-        set(timer_plot{4}, 'XData', opts.tC(end - opts.diff_lag - 1), 'YData', angles(end));
+        set(timer_plot{3}, 'XData', length(opts.tC) - opts.diff_lag, 'YData', speed(end));
+        set(timer_plot{4}, 'XData', length(opts.tC) - opts.diff_lag - 1, 'YData', angles(end));
+        % set(timer_plot{3}, 'XData', opts.tC(end - opts.diff_lag), 'YData', speed(end));
+        % set(timer_plot{4}, 'XData', opts.tC(end - opts.diff_lag - 1), 'YData', angles(end));
     end
-    % toc
 end
 
