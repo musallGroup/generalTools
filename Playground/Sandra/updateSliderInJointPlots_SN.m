@@ -40,12 +40,16 @@ function updateSliderInJointPlots_SN(src, event, hText, corr_mat_plot, connectio
     % set(timer_plot{2}, 'XData', opts.tC(frameIdx), 'YData', opts.perfC(frameIdx));
     if frameIdx < length(opts.tC) - opts.diff_lag
         set(timer_plot{3}, 'XData', frameIdx, 'YData', speed(frameIdx));
-        set(timer_plot{4}, 'XData', frameIdx, 'YData', angles(frameIdx));
+        if length(timer_plot) == 4
+            set(timer_plot{4}, 'XData', frameIdx, 'YData', angles(frameIdx));
+        end
         % set(timer_plot{3}, 'XData', opts.tC(frameIdx), 'YData', speed(frameIdx));
         % set(timer_plot{4}, 'XData', opts.tC(frameIdx), 'YData', angles(frameIdx));
     else
         set(timer_plot{3}, 'XData', length(opts.tC) - opts.diff_lag, 'YData', speed(end));
-        set(timer_plot{4}, 'XData', length(opts.tC) - opts.diff_lag - 1, 'YData', angles(end));
+        if length(timer_plot) == 4
+            set(timer_plot{4}, 'XData', length(opts.tC) - opts.diff_lag - 1, 'YData', angles(end));
+        end
         % set(timer_plot{3}, 'XData', opts.tC(end - opts.diff_lag), 'YData', speed(end));
         % set(timer_plot{4}, 'XData', opts.tC(end - opts.diff_lag - 1), 'YData', angles(end));
     end
