@@ -1,4 +1,6 @@
-function updateSliderInJointPlots_SN(src, event, hText, corr_mat_plot, connections, diffusion_plot, timer_plot, perf_ax, iSeg, CC_sorted, diffmap, speed, angles, region_per_component, line_strengths, thickness, color_list, transparency, opts)
+function updateSliderInAllAnimalPlots_SN(src, event, hText, corr_mat_plot, connections, diffusion_plot, timer_plot, perf_ax, iSeg, CC_sorted, diffmap, speed, angles, region_per_component, line_strengths, thickness, color_list, transparency, opts)
+    %TODO placeholder in case it becomes needed
+
     frameIdx = round(get(src, 'Value')); % Get slider value
     set(hText, 'String', sprintf(['time ' num2str(frameIdx)])); % Update text
     % set(hText, 'String', sprintf(['time ' num2str(opts.tC(frameIdx))])); % Update text
