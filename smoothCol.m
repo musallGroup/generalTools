@@ -43,8 +43,9 @@ if dim ~= 1
 end
 
 %add buffer to first dimension to avoid edge artefacts
-cbegin = repmat(dataIn(1,:,:),[fWidth ones(1,length(dSize)-1)]); %start buffer
-cend = repmat(dataIn(end,:,:),[fWidth ones(1,length(dSize)-1)]); %end buffer
+edgeWidth = ceil(fWidth); %make sure this is an integer
+cbegin = repmat(dataIn(1,:,:),[edgeWidth ones(1,length(dSize)-1)]); %start buffer
+cend = repmat(dataIn(end,:,:),[edgeWidth ones(1,length(dSize)-1)]); %end buffer
 dataIn = cat(1,cbegin,dataIn,cend);
 
 dataIn = reshape(dataIn,size(dataIn,1), []); %merge other dimensions for smoothing
@@ -118,7 +119,7 @@ else
 end
 
 dataOut = reshape(dataOut,[size(dataOut,1) dSize(dimOrder(2:end))]); %split dimensions again
-dataOut = dataOut(fWidth+1:end-fWidth, : ,:); %remove buffers
+dataOut = dataOut(edgeWidth+1:end-edgeWidth, : ,:); %remove buffers
 if dim ~= 1
     dataOut = ipermute(dataOut, dimOrder);
 end
