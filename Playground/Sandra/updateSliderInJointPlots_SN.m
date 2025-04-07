@@ -32,7 +32,7 @@ function updateSliderInJointPlots_SN(src, event, hText, corr_mat_plot, connectio
 %         end
 %     end
 
-    set(diffusion_plot, 'XData', diffmap(1, opts.times(frameIdx), iSeg), 'YData', diffmap(2,opts.times(frameIdx),iSeg), 'ZData', diffmap(3,opts.times(frameIdx),iSeg));
+    set(diffusion_plot, 'XData', diffmap(1, opts.times(frameIdx)), 'YData', diffmap(2,opts.times(frameIdx)), 'ZData', diffmap(3,opts.times(frameIdx)));
 
     set(timer_plot{1}, 'XData', frameIdx, 'YData', opts.Corr_strength{iSeg}(frameIdx));
     set(timer_plot{2}, 'XData', frameIdx, 'YData', opts.perfC(frameIdx));
