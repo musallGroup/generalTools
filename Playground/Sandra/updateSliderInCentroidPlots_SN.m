@@ -1,4 +1,4 @@
-function updateSliderInCentroidPlots_SN(src, event, hText, corr_mat_plot, connections, centroids, line_strengths, thickness, color_list, transparency)
+function updateSliderInCentroidPlots_SN(src, event, hText, corr_mat_plot, connections, centroids, line_strengths, thickness, color_list, transparency, highlights, diffmap, centers, windows, opts)
     frameIdx = round(get(src, 'Value')); % Get slider value
     set(hText, 'String', sprintf(['time ' num2str(frameIdx)])); % Update text
     % set(hText, 'String', sprintf(['time ' num2str(opts.tC(frameIdx))])); % Update text
@@ -22,5 +22,7 @@ function updateSliderInCentroidPlots_SN(src, event, hText, corr_mat_plot, connec
     cColor = reshape(color_list(:,:,frameIdx,1:4), n_components^2, []);
     set(cat(1,connections{non_diag_indices(useIdx)}), {'LineWidth', 'Color'}, [num2cell(line_strengths(2) * cThick(non_diag_indices(useIdx))'), num2cell(cColor(non_diag_indices(useIdx), :),2)]);
 
+    subset = centers(frameIdx)-windows(frameIdx):centers(frameIdx)+windows(frameIdx);
+    set(highlights, 'XData', diffmap(1, opts.times(subset)), 'YData', diffmap(2, opts.times(subset)), 'ZData', diffmap(3, opts.times(subset)))
 end
 
