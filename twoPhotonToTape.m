@@ -1,6 +1,7 @@
 function twoPhotonToTape(basePath, targPath, useCompress, keepLocal)
 % Function to move imaging data to the tape drive.
 % Will copy all data but only delete large TIFs from the base folder.
+% Will also compress uint16.dat files which are raw files from widefield.
 %
 % Function to move two photon data from bpod paradimgs into a tapedrive folder.
 % Will copy all data but only delete large TIFs from the base folder.
@@ -68,7 +69,8 @@ for iSessions = 1 : length(cSessions)
         %% find large TIF files and compress
         fprintf('Current folder (%d/%d): %s\n', iSessions, length(cSessions), cFolder);
         tifFiles = dir(fullfile(cFolder, '**', '*.TIF'));
-        tifFiles = tifFiles([tifFiles.bytes] > (1024^3 * delSize)); %potential tif stacks
+        tifFiles = [tifFiles; dir(fullfile(cFolder, '**', '*uint16.dat'))]; %also compress widefield data
+        tifFiles = tifFiles([tifFiles.bytes] > (1024^3 * delSize)); % only compress large files
         disp(['Current recording: ' basePath]);
         
         % try to compress TIF file
@@ -126,6 +128,7 @@ for iSessions = 1 : length(cSessions)
             fprintf('Removing large files from base folder...');
             delFiles = dir(fullfile(cFolder, '**', '*.tif'));
             delFiles = [delFiles; dir(fullfile(cFolder, '**', '*.7z'))];
+            delFiles = [delFiles; dir(fullfile(cFolder, '**', '*uint16.dat'))];
             delFiles = delFiles([delFiles.bytes] > (1024^3 * delSize)); %only delete files of this minimal size
             for iFiles = 1 : length(delFiles)
                 if exist(fullfile(delFiles(iFiles).folder, 'suite2p'), 'dir') %make sure suite2p output exists
