@@ -6,7 +6,8 @@ function [integrityCheck,zipOutputPath] = compressTIFwith7zip(tifFilePath, zipOu
     % - sevenZipPath: full path to 7z.exe (e.g., 'C:\Program Files\7-Zip\7z.exe')
 
     if ~exist('zipOutputPath', 'var') || isempty(zipOutputPath)
-        zipOutputPath = strrep(tifFilePath, '.tif', '.7z');
+        [~,~,fileEnd] = fileparts(tifFilePath);
+        zipOutputPath = strrep(tifFilePath, fileEnd, '.7z');
     end
     
     if ~exist('sevenZipPath', 'var') || isempty(sevenZipPath)
