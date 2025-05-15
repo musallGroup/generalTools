@@ -29,6 +29,7 @@ isMUA = cellfun(@(x)strcmpi(x,'mua'),C{2}(2:end));
 isUns = cellfun(@(x)strcmp(x,'unsorted'),C{2}(2:end));
 isProbMUA = cellfun(@(x)strcmp(x,'pMUA'),C{2}(2:end));
 isProbSUA = cellfun(@(x)strcmp(x,'pSUA'),C{2}(2:end));
+isNonSoma = cellfun(@(x)strcmp(x,'nonSoma'),C{2}(2:end));
 
 % if strcmpi(sorterType, 'phy')
 %     isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
@@ -52,9 +53,10 @@ cgs(isGood) = 2;
 cgs(isUns) = 3;
 cgs(isProbMUA) = 4;
 cgs(isProbSUA) = 5;
+cgs(isNonSoma) = 6;
 
 % only return clusters with known labels
-useIdx = isNoise | isMUA | isGood | isUns | isProbMUA | isProbSUA;
+useIdx = isNoise | isMUA | isGood | isUns | isProbMUA | isProbSUA | isNonSoma;
 cids = cids(useIdx);
 cgs = cgs(useIdx);
 
