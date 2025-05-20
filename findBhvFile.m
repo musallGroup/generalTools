@@ -1,13 +1,13 @@
 function bhvFiles = findBhvFile(bhvPath)
 % function to find behavioral files from a Bpod system. This checks the
-% content of mat files in a folder and checks for the variable SessionData
+% content of mat files in a folder (and its subfolders) and checks for the variable SessionData
 % which usually contains behavioral data.
 
-bhvFiles = dir(fullfile(bhvPath,'*.mat'));
+bhvFiles = dir(fullfile(bhvPath,'**\*.mat'));
 fileSelect = false(1, length(bhvFiles));
 for iFiles = 1 : length(bhvFiles)
     try
-        cFile = fullfile(bhvPath, bhvFiles(iFiles).name);
+        cFile = fullfile(bhvFiles(iFiles).folder, bhvFiles(iFiles).name);
         a = whos('-file', cFile);
         fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
     end

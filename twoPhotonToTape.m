@@ -1,4 +1,4 @@
-function twoPhotonToTape(basePath, targPath, useCompress, keepLocal)
+function nonSuite2pFiles = twoPhotonToTape(basePath, targPath, useCompress, keepLocal)
 % Function to move imaging data to the tape drive.
 % Will copy all data but only delete large TIFs from the base folder.
 % Will also compress uint16.dat files which are raw files from widefield.
@@ -54,6 +54,7 @@ if ~exist('targPath', 'var') || isempty(targPath)
 end
 
 %% find sessions
+nonSuite2pFiles = {};
 cSessions = dir(fullfile(basePath, 'Session Data'));
 cSessions = cSessions(~(ismember({cSessions.name}, '..') | ismember({cSessions.name}, '.')));
 cSessions = cSessions([cSessions.isdir]);
@@ -77,23 +78,29 @@ for iSessions = 1 : length(cSessions)
         % this needs installed 7zip to work
         if useCompress
             for iFiles = 1 : length(tifFiles)
-                disp(['Compressing file: '  tifFiles(iFiles).name]);
                 
                 cFile = fullfile(tifFiles(iFiles).folder, tifFiles(iFiles).name);
-                tic; [integrityCheck, zipOutputPath] = compressTIFwith7zip(cFile); toc;
-                
-                % make sure that compression was successful
-                if integrityCheck
-                    disp('Compression succesful. Deleting original TIF file.');
-                    delete(cFile);
+                if exist(fullfile(tifFiles(iFiles).folder, 'suite2p'), 'dir')
                     
-                    %double-check that file was really deleted and produce error otherwise.
-                    % It happened before that it was still on the server for some reason.
-                    if exist(cFile, 'file')
-                        error('TIF file could not be deleted. Is it still open somewhere else?');
+                    disp(['Compressing file: '  tifFiles(iFiles).name]);
+                    
+                    tic; [integrityCheck, zipOutputPath] = compressTIFwith7zip(cFile); toc;
+                    
+                    % make sure that compression was successful
+                    if integrityCheck
+                        disp('Compression succesful. Deleting original TIF file.');
+                        delete(cFile);
+                        
+                        %double-check that file was really deleted and produce error otherwise.
+                        % It happened before that it was still on the server for some reason.
+                        if exist(cFile, 'file')
+                            error('TIF file could not be deleted. Is it still open somewhere else?');
+                        end
+                    else
+                        disp('Compression failed. Check if 7z is installed in the base environment.');
                     end
                 else
-                    disp('Compression failed. Check if 7z is installed in the base environment.');
+                    nonSuite2pFiles = [nonSuite2pFiles(:); {cFile}];
                 end
             end
         end
@@ -131,10 +138,12 @@ for iSessions = 1 : length(cSessions)
             delFiles = [delFiles; dir(fullfile(cFolder, '**', '*uint16.dat'))];
             delFiles = delFiles([delFiles.bytes] > (1024^3 * delSize)); %only delete files of this minimal size
             for iFiles = 1 : length(delFiles)
+                cDelFile = fullfile(delFiles(iFiles).folder,delFiles(iFiles).name);
                 if exist(fullfile(delFiles(iFiles).folder, 'suite2p'), 'dir') %make sure suite2p output exists
-                    delete(fullfile(delFiles(iFiles).folder,delFiles(iFiles).name));
+                    delete(cDelFile);
                 else
                     fprintf('!!! Will NOT delete file %s because no suite2p output was present !!!\n', delFiles(iFiles).name)
+                    nonSuite2pFiles = [nonSuite2pFiles(:); {cDelFile}];
                 end
             end
             fprintf(' done.\n')
