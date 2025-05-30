@@ -9,7 +9,7 @@ if ~exist('cRange', 'var') || isempty(cRange)
     cRange = abs(prctile(cMap(:),97.5));
 end
 
-if ~exist('twoSided', 'var')
+if ~exist('twoSided', 'var') || isempty(twoSided)
     twoSided = true;
 end
 
@@ -17,9 +17,9 @@ if ~exist('colors', 'var')
     colors = colormap_blueblackred;
 end
 
-if twoSided
+if twoSided && isscalar(cRange)
     cRange = [-cRange cRange];
-else
+elseif isscalar(cRange)
     cRange = [prctile(cMap(:),2.5) prctile(cMap(:),97.5)];
 end
 
