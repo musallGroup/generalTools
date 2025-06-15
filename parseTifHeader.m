@@ -15,8 +15,8 @@ function dataStruct = parseTifHeader(headerText)
         
         % Check for specific cases
         if strcmp(key, 'epoch')
-            % Convert the epoch string to a numeric array
-            value = str2num(valueStr);
+            % Convert the epoch string to a date number
+            value = datenum(str2num(valueStr));
         elseif any(strcmp(key, {'auxTrigger0', 'auxTrigger1', 'auxTrigger2', 'auxTrigger3', 'I2CData'}))
             % For the empty arrays or cell arrays, we evaluate the string
             value = eval(valueStr);  % '{}' or '[]' will be converted correctly
