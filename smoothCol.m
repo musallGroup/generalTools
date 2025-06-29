@@ -25,8 +25,8 @@ if ~exist('dim','var') || isempty(dim)
     dim = 1; %default is smoothing first dimension
 end
 
-if ~ismember(fType,{'box' 'gauss' 'exp'})
-    error('Unknown filter type. Use "box" or "gauss" for fType')
+if ~ismember(fType,{'box' 'gauss' 'exp' 'invExp'})
+    error('Unknown filter type. Use "box", "gauss", "exp", or "invExp" for fType')
 end
 
 dSize = size(dataIn);
@@ -101,8 +101,33 @@ if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
                         fLength = ceil(fWidth * 5);
                     end
                     kernel = exponentialFilter(fWidth, fLength);
-                    kernel = [zeros(1, length(kernel)), kernel];
-                    outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                    kernel = [zeros(1, length(kernel)), kernel]';
+                    outData = conv2(useData,kernel,'same'); %convolve trace with exponential
+                    
+                elseif strcmpi(fType,'invExp') %inverse exponential filter for deconvolution
+                    if ~exist('fLength','var') || isempty(fLength)
+                        fLength = ceil(fWidth * 5);
+                    end
+                    kernel = exponentialFilter(fWidth, fLength);
+                    kernel = [zeros(1, length(kernel)), kernel]'; % Make it a column vector for 2D conv
+                    
+                    % Ensure the kernel has the same size as the data
+                    dataSize = size(useData);
+                    kernelPadded = zeros(dataSize);
+                    ks = size(kernel);
+                    kernelPadded(1:ks(1), 1:ks(2)) = kernel;
+                    kernelCentered = circshift(kernelPadded, -floor(size(kernel)/2)); %make sure kernel is centered
+                    
+                    % Compute 2D FFT of both the convolved data and the kernel
+                    OUT = fft2(useData);
+                    KERNEL = fft2(kernelCentered);
+                    
+                    % Regularization to avoid division by small numbers
+                    epsilon = 1e-8;
+                    outData = ifft2(OUT ./ (KERNEL + epsilon));
+                    
+                    % Take the real part (imaginary part should be negligible)
+                    outData = real(outData);
                 end
                 
                 % combine patches to output array

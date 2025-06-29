@@ -24,7 +24,7 @@ end
 csvFiles = dir([fPath filesep '*' folderName '*.csv']);
 digitalFile = [];
 for iFiles = 1 : length(csvFiles)
-   
+    
     cIdx = strfind(csvFiles(iFiles).name, folderName) + length(folderName) + 1;
     [~, checkName] = fileparts(csvFiles(iFiles).name(cIdx : end));
     try
@@ -49,46 +49,66 @@ end
 
 trigIdx = strcmpi(digitalData.(var1), trialTriggerChan); %events from trigger line
 
-% get times of the trigger line from system clock
-trialEvents = digitalData.(var4)(trigIdx);
-if find(strcmpi(digitalData.(var3)(trigIdx), 'false'), 1) == 1
-    trialEvents(1) = [];
-end
-trialEvents = round((trialEvents - sessionStart) * 1000); %these are system timestamps in miliseconds after session start
-
-% create trigger trace to analyze barcodes
-sessionDur = ceil((sessionEnd - sessionStart) * 1000); %duration of session in miliseconds
-trialStartTrace = false(1, sessionDur);
-for iEvents = 1 : 2 : length(trialEvents)
-    if iEvents + 1 > length(trialEvents)
-        trialStartTrace(trialEvents(iEvents) : end) = true;
-    else
-        trialStartTrace(trialEvents(iEvents) : trialEvents(iEvents+1)-1) = true;
+if sum(trigIdx) > 0
+    % get times of the trigger line from system clock
+    trialEvents = digitalData.(var4)(trigIdx);
+    if find(strcmpi(digitalData.(var3)(trigIdx), 'false'), 1) == 1
+        trialEvents(1) = [];
     end
-end
+    trialEvents = round((trialEvents - sessionStart) * 1000); %these are system timestamps in miliseconds after session start
+    
+    % create trigger trace to analyze barcodes
+    sessionDur = ceil((sessionEnd - sessionStart) * 1000); %duration of session in miliseconds
+    trialStartTrace = false(1, sessionDur);
+    for iEvents = 1 : 2 : length(trialEvents)
+        if iEvents + 1 > length(trialEvents)
+            trialStartTrace(trialEvents(iEvents) : end) = true;
+        else
+            trialStartTrace(trialEvents(iEvents) : trialEvents(iEvents+1)-1) = true;
+        end
+    end
+    
+    % extract barcodes from trigger sequence
+    [trialNumbers, trialOnTimes] = segmentVoltageAndReadBarcodes(trialStartTrace, shortInt, longInt, 0.1, 0.5);
+    trialOnTimes = trialOnTimes(trialNumbers > -1) / 1000;
+    trialNumbers = trialNumbers(trialNumbers > -1);
+    
+    % compare number of trial triggers
+    bhv = SessionData;
+    if length(trialNumbers) < SessionData.nTrials
+        fprintf('!!! Bpod data has %d more trials as trial triggers in the SpikeGLX data. Make sure this is OK !!!\n', SessionData.nTrials - length(trialNumbers));
+        bhv = selectBehaviorTrials(SessionData, trialNumbers);
+    elseif any(trialNumbers > SessionData.nTrials)
+        cIdx = trialNumbers > SessionData.nTrials;
+        fprintf('!!! SpikeGLX has %d more trial triggers as trials in bpod data. Make sure this is OK !!!\n', sum(cIdx));
+        trialNumbers(cIdx) = [];
+        trialOnTimes(cIdx) = [];
+    end
+    
+    % adjust trialOnTimes so that they point to the start of a bpod trial, not
+    % the start of the barcode sequence
+    barCodeStart = nan(1, bhv.nTrials);
+    for iTrials = 1 : length(barCodeStart)
+        barCodeStart(iTrials) = bhv.RawEvents.Trial{iTrials}.States.trialCode1(1);
+    end
+    trialOnTimes = trialOnTimes - barCodeStart; %shift trial onset times to account for barcode start
+    
+else %if there are no trial triggers, check for stimulus triggers as a fallback option
 
-% extract barcodes from trigger sequence
-[trialNumbers, trialOnTimes] = segmentVoltageAndReadBarcodes(trialStartTrace, shortInt, longInt, 0.1, 0.5);
-trialOnTimes = trialOnTimes(trialNumbers > -1) / 1000;
-trialNumbers = trialNumbers(trialNumbers > -1);
+    stimulusTriggerChan = 'input1'; %could be stimulus triggers here
+    trigIdx = strcmpi(digitalData.(var1), stimulusTriggerChan); %events from trigger line
 
-% compare number of trial triggers
-bhv = SessionData;
-if length(trialNumbers) < SessionData.nTrials
-    fprintf('!!! Bpod data has %d more trials as trial triggers in the SpikeGLX data. Make sure this is OK !!!\n', SessionData.nTrials - length(trialNumbers));
+    % get times of the trigger line from system clock
+    stimEvents = digitalData.(var4)(trigIdx & strcmpi(digitalData.(var3), 'true'));
+    stimEvents = round((stimEvents - sessionStart) * 1000); %these are system timestamps in miliseconds after session start
+    
+    stimOn = nan(1, length(stimEvents));
+    for iTrials = 1 : length(stimEvents)
+        stimOn(iTrials) = round(SessionData.RawEvents.Trial{iTrials}.States.PlayStimulus(1)*1000);
+    end
+    trialOnTimes = (stimEvents' - stimOn) / 100; %subtract stimulus onset time to get to trial
+    trialNumbers = 1:length(trialOnTimes);
+    
+    % subselect behavioral data for which we have triggers
     bhv = selectBehaviorTrials(SessionData, trialNumbers);
-elseif any(trialNumbers > SessionData.nTrials)
-    cIdx = trialNumbers > SessionData.nTrials;
-    fprintf('!!! SpikeGLX has %d more trial triggers as trials in bpod data. Make sure this is OK !!!\n', sum(cIdx));
-    trialNumbers(cIdx) = [];
-    trialOnTimes(cIdx) = [];
 end
-
-% adjust trialOnTimes so that they point to the start of a bpod trial, not
-% the start of the barcode sequence
-barCodeStart = nan(1, bhv.nTrials);
-for iTrials = 1 : length(barCodeStart)
-    barCodeStart(iTrials) = bhv.RawEvents.Trial{iTrials}.States.trialCode1(1);
-end
-trialOnTimes = trialOnTimes - barCodeStart; %shift trial onset times to account for barcode start
-
