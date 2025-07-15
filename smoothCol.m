@@ -25,8 +25,8 @@ if ~exist('dim','var') || isempty(dim)
     dim = 1; %default is smoothing first dimension
 end
 
-if ~ismember(fType,{'box' 'gauss' 'exp' 'invExp'})
-    error('Unknown filter type. Use "box", "gauss", "exp", or "invExp" for fType')
+if ~ismember(fType,{'box' 'gauss' 'exp' 'invExp', 'half-gauss'})
+    error('Unknown filter type. Use "box", "gauss", "exp", , " or "invExp" for fType')
 end
 
 dSize = size(dataIn);
@@ -93,6 +93,17 @@ if sum(~isnan((abs(dataIn(:))))) > 0 %check if there is any data available
                     end
                     fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
                     kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
+                    kernel = kernel / norm(kernel); %normalize kernel
+                    outData = conv2(useData,kernel','same'); %smooth trace with gaussian
+                    
+                elseif strcmpi(fType,'half-gauss') %half-gaussian filter
+                    fSig = fWidth./(2*sqrt(2*log(2))); %in case of gaussian smooth, convert fwhm to sigma.
+                    if ~exist('fLength','var') || isempty(fLength)
+                        fLength = round(fSig * 100); %length of gaussian filter
+                    end
+                    fLength = fLength-1+mod(fLength,2); % ensure kernel length is odd
+                    kernel = exp(-linspace(-fLength / 2, fLength / 2, fLength) .^ 2 / (2 * fSig ^ 2));
+                    kernel(1:floor(fLength/2)) = 0; %cut left side of the kernel
                     kernel = kernel / norm(kernel); %normalize kernel
                     outData = conv2(useData,kernel','same'); %smooth trace with gaussian
                     
