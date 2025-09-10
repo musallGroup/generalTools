@@ -1,0 +1,171 @@
+function out = bpod_checkSessions(opts)
+% Check behavioral data from individual sessions and collect in larger
+% array. Also returns performance for each session.
+
+%% get files and date for each recording
+fPath = [opts.cPath opts.cAnimal filesep opts.paradigm '\Session Data\']; %folder with behavioral data
+for iChecks = 1:2 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
+    files = dir([fPath '*' filesep opts.cAnimal '_' opts.paradigm '*.mat']); %behavioral files in correct cPath
+    
+    %identify behavioral files
+    fileSelect = false(1, length(files));
+    for iFiles = 1 : length(files)
+        try
+            cFile = fullfile(files(iFiles).folder, files(iFiles).name);
+            a = whos('-file', cFile);
+            fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
+        end
+    end
+    files = files(fileSelect);
+    if ~isempty(files)
+        break;
+    end
+    pause(0.1);
+end
+folders = {files.folder}';
+
+% check that folders is a cell not a char array. Can happen when only one
+% folder exists.
+if ischar(folders)
+    folders = {folders};
+end
+
+%% check daterange and reduce range of recordings if requested
+if isfield(opts, 'dateRange') && ischar(opts.dateRange{1}) && ischar(opts.dateRange{2})
+    opts.dateRange = datenum(opts.dateRange,'dd-mm-yyyy')'; %convert to date numbers if needed
+else
+    opts.dateRange = [1, inf];
+end
+
+%% remove files outside of the date range
+useRec = false(1,size(files,1));
+recDate = NaN(1,size(files,1));
+for iFiles = 1:size(files,1)
+    
+    [~,a] = fileparts(folders{iFiles});
+    try
+        recDate(iFiles) = datenum(a,'yyyymmdd_HHMMSS');
+        % if recording is in date range
+        if recDate(iFiles) >= opts.dateRange(1) && recDate(iFiles) <= opts.dateRange(2)
+            useRec(iFiles) = true;
+        end
+       
+    catch
+        useRec(iFiles) = false; %dont use if date comparison fails
+    end
+end
+files = files(useRec);
+recDate = recDate(useRec);
+
+fprintf('Current animal %s, %G/%G recordings in correct date range\n', opts.cAnimal, sum(useRec), length(useRec))
+fprintf('First rec: %s - Last rec: %s\n', datestr(min(recDate)), datestr(max(recDate)));
+
+%% load data
+useData = false(1, length(files));
+performance = nan(1, length(files));
+sessionDur = zeros(1, length(files));
+sessionTrialCount = zeros(1, length(files));
+sessionRewardAmount = zeros(1, length(files));
+sessionTime = cell(length(files), 1);
+sessionType = cell(length(files), 1);
+sessionNotes = cell(length(files), 1);
+switchCnt = 0;
+fprintf('%i files found\n', length(files));
+for iFiles = 1:size(files,1)
+    
+    clear SessionData
+    load(fullfile(files(iFiles).folder, files(iFiles).name), 'SessionData'); %load current bhv file
+    
+    %this gets some information for current session
+    sessionTrialCount(iFiles) = SessionData.nTrials;
+    normIdx = false(1, SessionData.nTrials);
+    if isfield(SessionData, 'DidNotChoose')
+        sessionTrialCount(iFiles) = sum(~SessionData.DidNotChoose);
+        normIdx = ~SessionData.DidNotChoose; %only trials that were responded to
+    end
+    if isfield(SessionData, 'Assisted')
+        normIdx = normIdx & SessionData.Assisted; %only non-assisted trials for performance
+        if contains(files(iFiles).name, 'LickingLama')
+            normIdx = SessionData.Assisted;
+        end
+    end
+    
+    performance(1, iFiles) = nan;
+    if isfield(SessionData, 'Rewarded')
+        performance(1, iFiles) = sum(SessionData.Rewarded(normIdx)) / sum(normIdx);
+    end
+    
+    useData(iFiles) = sessionTrialCount(iFiles) > opts.minTrials; %if file contains enough performed trials
+
+    sessionTime{iFiles} = datestr(recDate(iFiles));
+    sessionDur(iFiles) = SessionData.sessionDur;
+    sessionRewardAmount(iFiles) = SessionData.givenReward;
+    
+    selfPerformFraction = sum(normIdx) / length(normIdx);
+    if strcmpi(opts.expType, 'Passiv visual stimulation')
+        currentState = [];
+    elseif selfPerformFraction < 0.5
+        currentState = 'Basic task performance';
+    elseif selfPerformFraction < 0.7
+        currentState = 'Intermediate task performance';
+    else
+        currentState = 'Expert task performance';
+        if performance(1, iFiles) < 0.7
+            currentState = 'Intermediate task performance';
+        end
+    end
+    
+    sessionType{iFiles} = sprintf('%s - %s', opts.expType, currentState);
+    
+    if useData(iFiles)
+        useData(iFiles) = (round(recDate(iFiles)) - round(datenum(opts.surgeryDate))) > 14;
+    end
+        
+    if useData(iFiles) && iFiles > 1
+        if round(recDate(iFiles)) == round(recDate(iFiles-1))
+            if sessionTrialCount(iFiles) > sessionTrialCount(iFiles -1)
+                useData(iFiles-1) = false;
+            else
+                useData(iFiles) = false;
+            end
+        end
+    end
+    
+    if ~isfield(SessionData, 'Notes')
+        SessionData.Notes{iFiles} = [];
+    end
+    sessionNotes{iFiles} = SessionData.Notes(~cellfun(@isempty, SessionData.Notes));
+    if ~isempty(sessionNotes{iFiles})
+        sessionNotes{iFiles} = strjoin(sessionNotes{iFiles});
+    end
+    
+    if isempty(sessionNotes{iFiles}) && useData(iFiles)
+        if switchCnt == 0 %first session
+            sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of basic training'}]);
+            switchCnt = switchCnt + 1;
+            
+        elseif switchCnt == 1 && strcmpi(currentState, 'Intermediate task performance') && isempty(sessionNotes{iFiles-1})
+            sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of Intermediate training'}]);
+            switchCnt = switchCnt + 1;
+
+        elseif switchCnt == 2 && strcmpi(currentState, 'Expert task performance')
+            sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of Expert training'}]);
+            switchCnt = switchCnt + 1;
+        end
+    end
+    
+    if rem(iFiles, round(length(files) / 10)) == 0
+        fprintf('%i/%i complete\n', iFiles, length(files));
+    end
+end
+disp('done');
+
+%%
+clear out
+out.performance = performance(useData);
+out.sessionDur = sessionDur(useData);
+out.sessionTime = sessionTime(useData);
+out.sessionTrialCount = sessionTrialCount(useData);
+out.sessionRewardAmount = sessionRewardAmount(useData);
+out.sessionType = sessionType(useData);
+out.sessionNotes = sessionNotes(useData);
