@@ -3,26 +3,40 @@ function out = bpod_checkSessions(opts)
 % array. Also returns performance for each session.
 
 %% get files and date for each recording
-fPath = [opts.cPath opts.cAnimal filesep opts.paradigm '\Session Data\']; %folder with behavioral data
-for iChecks = 1:2 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
-    files = dir([fPath '*' filesep opts.cAnimal '_' opts.paradigm '*.mat']); %behavioral files in correct cPath
-    
-    %identify behavioral files
-    fileSelect = false(1, length(files));
-    for iFiles = 1 : length(files)
-        try
-            cFile = fullfile(files(iFiles).folder, files(iFiles).name);
-            a = whos('-file', cFile);
-            fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
+if ~isempty(opts.paradigm)
+    fPath = [opts.cPath opts.cAnimal filesep opts.paradigm '\Session Data\']; %folder with behavioral data
+    for iChecks = 1:2 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
+        files = dir([fPath '*' filesep opts.cAnimal '_' opts.paradigm '*.mat']); %behavioral files in correct cPath
+        
+        %identify behavioral files
+        fileSelect = false(1, length(files));
+        for iFiles = 1 : length(files)
+            try
+                cFile = fullfile(files(iFiles).folder, files(iFiles).name);
+                a = whos('-file', cFile);
+                fileSelect(iFiles) = any(strcmpi({a(:).name}, 'SessionData'));
+            end
         end
+        files = files(fileSelect);
+        if ~isempty(files)
+            break;
+        end
+        pause(0.1);
     end
-    files = files(fileSelect);
-    if ~isempty(files)
-        break;
+    folders = {files.folder}';
+    
+else
+    fPath = [opts.cPath filesep opts.paradigm filesep opts.cAnimal filesep]; %folder with behavioral data
+    for iChecks = 1:10 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
+        files = dir([fPath '*' filesep 'task_data']); %behavioral files in correct cPath
+        if ~isempty(files)
+            break;
+        end
+        pause(0.1);
     end
-    pause(0.1);
+    files = unique({files(:).folder})'; %isolate unique folder paths
+    folders = fileparts(files);
 end
-folders = {files.folder}';
 
 % check that folders is a cell not a char array. Can happen when only one
 % folder exists.
@@ -44,7 +58,12 @@ for iFiles = 1:size(files,1)
     
     [~,a] = fileparts(folders{iFiles});
     try
-        recDate(iFiles) = datenum(a,'yyyymmdd_HHMMSS');
+        if ~isempty(opts.paradigm)
+            recDate(iFiles) = datenum(a,'yyyymmdd_HHMMSS');
+        else
+            recDate(iFiles) = datenum(a,'yyyy-mm-dd_HH-MM-SS');
+        end
+        
         % if recording is in date range
         if recDate(iFiles) >= opts.dateRange(1) && recDate(iFiles) <= opts.dateRange(2)
             useRec(iFiles) = true;
@@ -74,7 +93,12 @@ fprintf('%i files found\n', length(files));
 for iFiles = 1:size(files,1)
     
     clear SessionData
-    load(fullfile(files(iFiles).folder, files(iFiles).name), 'SessionData'); %load current bhv file
+    if isempty(opts.paradigm)
+        [SessionData, bhvFile] = bA_convertTeensySessionData(files{iFiles}, opts);
+    else
+        bhvFile = fullfile(files(iFiles).folder, files(iFiles).name);
+        load(bhvFile, 'SessionData'); %load current bhv file
+    end
     
     %this gets some information for current session
     sessionTrialCount(iFiles) = SessionData.nTrials;
@@ -85,7 +109,7 @@ for iFiles = 1:size(files,1)
     end
     if isfield(SessionData, 'Assisted')
         normIdx = normIdx & SessionData.Assisted; %only non-assisted trials for performance
-        if contains(files(iFiles).name, 'LickingLama')
+        if ~isempty(opts.paradigm) && contains(files(iFiles).name, 'LickingLama')
             normIdx = SessionData.Assisted;
         end
     end
@@ -94,7 +118,6 @@ for iFiles = 1:size(files,1)
     if isfield(SessionData, 'Rewarded')
         performance(1, iFiles) = sum(SessionData.Rewarded(normIdx)) / sum(normIdx);
     end
-    
     useData(iFiles) = sessionTrialCount(iFiles) > opts.minTrials; %if file contains enough performed trials
 
     sessionTime{iFiles} = datestr(recDate(iFiles));
@@ -114,15 +137,10 @@ for iFiles = 1:size(files,1)
             currentState = 'Intermediate task performance';
         end
     end
-    
     sessionType{iFiles} = sprintf('%s - %s', opts.expType, currentState);
-    
-    if useData(iFiles)
-        useData(iFiles) = (round(recDate(iFiles)) - round(datenum(opts.surgeryDate))) > 14;
-    end
-        
+
     if useData(iFiles) && iFiles > 1
-        if round(recDate(iFiles)) == round(recDate(iFiles-1))
+        if floor(recDate(iFiles)) == floor(recDate(iFiles-1))
             if sessionTrialCount(iFiles) > sessionTrialCount(iFiles -1)
                 useData(iFiles-1) = false;
             else
@@ -131,10 +149,11 @@ for iFiles = 1:size(files,1)
         end
     end
     
-    if ~isfield(SessionData, 'Notes')
-        SessionData.Notes{iFiles} = [];
-    end
-    sessionNotes{iFiles} = SessionData.Notes(~cellfun(@isempty, SessionData.Notes));
+%     if ~isfield(SessionData, 'Notes')
+%         SessionData.Notes{iFiles} = [];
+%     end
+%     sessionNotes{iFiles} = SessionData.Notes(~cellfun(@isempty, SessionData.Notes));
+    sessionNotes{iFiles} = [];
     if ~isempty(sessionNotes{iFiles})
         sessionNotes{iFiles} = strjoin(sessionNotes{iFiles});
     end
