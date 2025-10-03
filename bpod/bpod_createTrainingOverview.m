@@ -7,7 +7,9 @@ opts.savePath = 'D:\\BpodReports\';
 % animal info
 opts.cAnimal = cAnimal; %animal name
 opts.dateRange = {'01-Aug-2021', '12-Dec-2026'}; %date range
-opts.expType = 'Visual navigation';
+% opts.expType = 'Visual navigation'; %Experimental row c
+% opts.expType = 'Multisensory discrimination'; %Experimental row D
+opts.expType = 'Visual discrimination'; %Experimental row B
 
 %% analysis for different paradigms in chronological order
 opts.minTrials = 10;

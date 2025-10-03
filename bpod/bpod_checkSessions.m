@@ -1,6 +1,7 @@
 function out = bpod_checkSessions(opts)
 % Check behavioral data from individual sessions and collect in larger
 % array. Also returns performance for each session.
+rng("default")
 
 %% get files and date for each recording
 if ~isempty(opts.paradigm)
@@ -90,6 +91,7 @@ sessionType = cell(length(files), 1);
 sessionNotes = cell(length(files), 1);
 switchCnt = 0;
 fprintf('%i files found\n', length(files));
+
 for iFiles = 1:size(files,1)
     
     clear SessionData
@@ -123,8 +125,11 @@ for iFiles = 1:size(files,1)
     sessionTime{iFiles} = datestr(recDate(iFiles));
     sessionDur(iFiles) = SessionData.sessionDur;
     sessionRewardAmount(iFiles) = SessionData.givenReward;
-    
     selfPerformFraction = sum(normIdx) / length(normIdx);
+    
+    if ~isfield(opts, 'expType')
+        opts.expType = 'Visual navigation';
+    end
     if strcmpi(opts.expType, 'Passiv visual stimulation')
         currentState = [];
     elseif selfPerformFraction < 0.5
@@ -138,7 +143,7 @@ for iFiles = 1:size(files,1)
         end
     end
     sessionType{iFiles} = sprintf('%s - %s', opts.expType, currentState);
-
+    
     if useData(iFiles) && iFiles > 1
         if floor(recDate(iFiles)) == floor(recDate(iFiles-1))
             if sessionTrialCount(iFiles) > sessionTrialCount(iFiles -1)
@@ -149,16 +154,8 @@ for iFiles = 1:size(files,1)
         end
     end
     
-%     if ~isfield(SessionData, 'Notes')
-%         SessionData.Notes{iFiles} = [];
-%     end
-%     sessionNotes{iFiles} = SessionData.Notes(~cellfun(@isempty, SessionData.Notes));
-    sessionNotes{iFiles} = [];
-    if ~isempty(sessionNotes{iFiles})
-        sessionNotes{iFiles} = strjoin(sessionNotes{iFiles});
-    end
-    
-    if isempty(sessionNotes{iFiles}) && useData(iFiles)
+    if useData(iFiles)
+        sessionNotes{iFiles} = [];
         if switchCnt == 0 %first session
             sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of basic training'}]);
             switchCnt = switchCnt + 1;
