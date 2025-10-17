@@ -39,7 +39,7 @@ def convert_docx_to_pdf_lossless(docx_path):
     subprocess.run(cmd, check=True)
 
     if pdf_path.exists():
-        print(f"✅ Created lossless PDF:\n  {pdf_path}")
+        print(f"Created lossless PDF:\n  {pdf_path}")
     else:
         raise FileNotFoundError("Conversion finished, but PDF not found!")
 
