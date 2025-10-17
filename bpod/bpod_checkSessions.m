@@ -110,7 +110,11 @@ for iFiles = 1:size(files,1)
         normIdx = ~SessionData.DidNotChoose; %only trials that were responded to
     end
     if isfield(SessionData, 'Assisted')
-        normIdx = normIdx & SessionData.Assisted; %only non-assisted trials for performance
+        if length(normIdx) == length(SessionData.Assisted) && sum(SessionData.Assisted) > 0
+            normIdx = normIdx & SessionData.Assisted; %only non-assisted trials for performance
+        else
+            normIdx = normIdx & ~SessionData.SingleSpout; %only non-assisted trials for performance
+        end
         if ~isempty(opts.paradigm) && contains(files(iFiles).name, 'LickingLama')
             normIdx = SessionData.Assisted;
         end
@@ -130,6 +134,7 @@ for iFiles = 1:size(files,1)
     if ~isfield(opts, 'expType')
         opts.expType = 'Visual navigation';
     end
+    currentState = [];
     if strcmpi(opts.expType, 'Passiv visual stimulation')
         currentState = [];
     elseif selfPerformFraction < 0.5
@@ -143,7 +148,8 @@ for iFiles = 1:size(files,1)
         end
     end
     sessionType{iFiles} = sprintf('%s - %s', opts.expType, currentState);
-    
+%     sessionType{iFiles} = opts.expType;
+
     if useData(iFiles) && iFiles > 1
         if floor(recDate(iFiles)) == floor(recDate(iFiles-1))
             if sessionTrialCount(iFiles) > sessionTrialCount(iFiles -1)
