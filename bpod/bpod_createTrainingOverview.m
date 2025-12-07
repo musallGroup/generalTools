@@ -2,14 +2,14 @@ function bpod_createTrainingOverview(cAnimal)
 %% set some basic variables and get behavior
 opts.cPath = '\\naskampa\data\BpodBehavior\'; %for data from bpod setup
 % opts.cPath = '\\naskampa\lts\Multisensory_task\MS_task_V2_5\'; %for data from teensy setup
-opts.savePath = 'D:\\BpodReports\';
+opts.savePath = 'D:\\Behavior_data\';
 
 % animal info
 opts.cAnimal = cAnimal; %animal name
 opts.dateRange = {'01-Aug-2021', '12-Dec-2026'}; %date range
 % opts.expType = 'Visual navigation'; %Experimental row c
-% opts.expType = 'Multisensory discrimination'; %Experimental row D
-opts.expType = 'Visual discrimination'; %Experimental row B
+opts.expType = 'Multisensory discrimination'; %Experimental row D
+% opts.expType = 'Visual discrimination'; %Experimental row B
 
 %% analysis for different paradigms in chronological order
 opts.minTrials = 10;
@@ -44,7 +44,7 @@ end
 % Define the output Markdown file name
 if ~isempty(allOut.sessionDur)
     if ~exist(opts.savePath); mkdir(opts.savePath); end
-    reportFile = fullfile(opts.savePath, [opts.cAnimal '_BPodReport.txt']);
+    reportFile = fullfile(opts.savePath, [opts.cAnimal '_BehaviorReport.txt']);
     fileID = fopen(reportFile, 'w');
     
     fprintf(fileID, ['######## ' opts.cAnimal ' - Behavioral Task Report ########\n']);
@@ -61,4 +61,6 @@ if ~isempty(allOut.sessionDur)
     end
     fclose(fileID);
 end
+txt2pdf(reportFile);
+delete(reportFile);
 end

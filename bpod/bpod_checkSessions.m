@@ -161,6 +161,9 @@ for iFiles = 1:size(files,1)
     end
     
     if useData(iFiles)
+        saveFile = strrep(bhvFile, opts.cPath, opts.savePath);
+        if ~exist(fileparts(saveFile), 'dir'); mkdir(fileparts(saveFile)); end
+        save(strrep(bhvFile, opts.cPath, opts.savePath), 'SessionData'); %make local copy for reproduceability
         sessionNotes{iFiles} = [];
         if switchCnt == 0 %first session
             sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of basic training'}]);

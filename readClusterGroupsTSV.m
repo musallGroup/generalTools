@@ -29,7 +29,7 @@ isMUA = cellfun(@(x)strcmpi(x,'mua'),C{2}(2:end));
 isUns = cellfun(@(x)strcmp(x,'unsorted'),C{2}(2:end));
 isProbMUA = cellfun(@(x)strcmp(x,'pMUA'),C{2}(2:end));
 isProbSUA = cellfun(@(x)strcmp(x,'pSUA'),C{2}(2:end));
-isNonSoma = cellfun(@(x)strcmp(x,'nonSoma'),C{2}(2:end));
+isNonSoma = cellfun(@(x)strcmp(x,'NON-SOMA'),C{2}(2:end));
 
 % if strcmpi(sorterType, 'phy')
 %     isGood = cellfun(@(x)strcmpi(x,'good'),C{2}(2:end));
