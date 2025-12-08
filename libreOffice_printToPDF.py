@@ -48,7 +48,7 @@ def convert_docx_to_pdf_lossless(docx_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python convert_docx_to_pdf_lossless.py <path_to_docx>")
+        print("Usage: python libreOffice_printToPDF.py <path_to_docx>")
         sys.exit(1)
 
     input_path = sys.argv[1]
