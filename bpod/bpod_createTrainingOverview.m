@@ -1,6 +1,7 @@
 function bpod_createTrainingOverview(cAnimal)
 %% set some basic variables and get behavior
-opts.cPath = '\\naskampa\data\BpodBehavior\'; %for data from bpod setup
+opts.cPath = 'D:\Bpod Local\Data\'; %for data from bpod setup
+% opts.cPath = '\\naskampa\data\BpodBehavior\'; %for data from bpod setup
 % opts.cPath = '\\naskampa\lts\Multisensory_task\MS_task_V2_5\'; %for data from teensy setup
 opts.savePath = 'D:\\Behavior_data\';
 
@@ -8,7 +9,7 @@ opts.savePath = 'D:\\Behavior_data\';
 opts.cAnimal = cAnimal; %animal name
 opts.dateRange = {'01-Aug-2021', '12-Dec-2026'}; %date range
 % opts.expType = 'Visual navigation'; %Experimental row c
-opts.expType = 'Multisensory discrimination'; %Experimental row D
+opts.expType = 'Multisensory navigation'; %Experimental row D
 % opts.expType = 'Visual discrimination'; %Experimental row B
 
 %% analysis for different paradigms in chronological order
@@ -53,7 +54,7 @@ if ~isempty(allOut.sessionDur)
         fprintf(fileID, [allOut.sessionType{iSessions} '\n']);
         fprintf(fileID, '%s; Session duration: %.2f minutes\n', allOut.sessionTime{iSessions}, allOut.sessionDur(iSessions));
         fprintf(fileID, 'Performed trials: %i; Performance: %.2f percent\n', allOut.sessionTrialCount(iSessions), allOut.performance(iSessions)*100);
-        fprintf(fileID, 'Total reward given: %.2f ml\n', allOut.sessionRewardAmount(iSessions));
+%         fprintf(fileID, 'Total reward given: %.2f ml\n', allOut.sessionRewardAmount(iSessions));
         if ~isempty(allOut.sessionNotes{iSessions})
             fprintf(fileID, 'Notes: %s\n', allOut.sessionNotes{iSessions});
         end

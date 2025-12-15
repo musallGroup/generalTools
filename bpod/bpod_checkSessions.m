@@ -124,9 +124,10 @@ for iFiles = 1:size(files,1)
     if isfield(SessionData, 'Rewarded')
         performance(1, iFiles) = sum(SessionData.Rewarded(normIdx)) / sum(normIdx);
     end
-    useData(iFiles) = sessionTrialCount(iFiles) > opts.minTrials; %if file contains enough performed trials
-
+    useData(iFiles) = sessionTrialCount(iFiles) > opts.minTrials || iFiles < 3; %if file contains enough performed trials
+    
     sessionTime{iFiles} = datestr(recDate(iFiles));
+    if ~isfield(SessionData, 'sessionDur'); SessionData.sessionDur = SessionData.SessionDur; end
     sessionDur(iFiles) = SessionData.sessionDur;
     sessionRewardAmount(iFiles) = SessionData.givenReward;
     selfPerformFraction = sum(normIdx) / length(normIdx);

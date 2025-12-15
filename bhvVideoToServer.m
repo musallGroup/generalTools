@@ -26,7 +26,8 @@ end
 if ~exist('serverPath', 'var') || isempty(serverPath)
     serverString = '\\naskampa.kampa-10g\lts\BpodBehavior\'; %assume this is the server folder. lts is default
 else
-    serverString = ['\\naskampa.kampa-10g\' serverPath '\BpodBehavior\']; %assume this is the server folder, given the target partition.
+%     serverString = ['\\naskampa.kampa-10g\' serverPath '\BpodBehavior\']; %assume this is the server folder, given the target partition.
+    serverString = [serverPath '\BpodBehavior\']; %assume this is the server folder, given the target partition.
 end
     
 %check if 10GB network is present and switch to regular network otherwise
