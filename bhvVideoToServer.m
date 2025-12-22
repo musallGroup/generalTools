@@ -37,9 +37,17 @@ end
     
 %source and target path are under Bpod Local and BpodBehavoior by default
 localString = 'Bpod Local\Data'; %assume this is the local folder
+if ~contains(basePath, localString) %if not using Bpod Local, check BpodBehavior instead
+    localString = 'BpodBehavior'; %assume this is the local folder        
+end
 baseIdx = strfind(basePath, localString);
 baseIdx = baseIdx + length(localString);
 targPath = strrep(basePath, basePath(1:baseIdx), serverString);
+
+% confirm that base and target are not the same path
+if strcmpi(basePath, targPath)
+    error('Source and target folder are identical. This should not happen !!');
+end
 
 % find sessions
 cSessions = dir(fullfile(basePath, 'Session Data'));
@@ -50,10 +58,9 @@ for iSessions = 1 : length(cSessions)
     
     cFolder = fullfile(basePath, 'Session Data', cSessions(iSessions).name);
     targFolder = fullfile(targPath, 'Session Data', cSessions(iSessions).name);
-    
     disp(['Current folder is ', cFolder]);
     
-    if ~isfolder(targFolder)
+    if ~exist(targFolder, 'dir')
         % check if recording has been moved to a subfolder
         folderCheck = dir([fullfile(targPath, 'Session Data\'), '*\' cSessions(iSessions).name]);
         if ~isempty(folderCheck)
@@ -61,7 +68,7 @@ for iSessions = 1 : length(cSessions)
         end
     end
     
-    if ~isfolder(targFolder)
+    if ~exist(targFolder, 'dir')
         disp('Current folder is missing on server. Uploading local data.');
         copyfile(cFolder, targFolder);
         disp('Copy complete. Removing videos from base folder...');
@@ -111,7 +118,7 @@ for iSessions = 1 : length(cSessions)
         
         % check if local file can be deleted
         if ~keepLocal
-            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && v1.Duration == v2.Duration)
+            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && v1.Duration == v2.Duration)
                 clear v1 v2
                 delete(sourceFile); %only delete local file if there is a copy on the server
                 fprintf('Removed local file %s\n', sourceFile);
