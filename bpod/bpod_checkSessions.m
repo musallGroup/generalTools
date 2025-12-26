@@ -8,7 +8,7 @@ if ~isempty(opts.paradigm)
     fPath = [opts.cPath opts.cAnimal filesep opts.paradigm '\Session Data\']; %folder with behavioral data
     for iChecks = 1:2 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
         files = dir([fPath '*' filesep opts.cAnimal '_' opts.paradigm '*.mat']); %behavioral files in correct cPath
-        
+
         %identify behavioral files
         fileSelect = false(1, length(files));
         for iFiles = 1 : length(files)
@@ -25,7 +25,7 @@ if ~isempty(opts.paradigm)
         pause(0.1);
     end
     folders = {files.folder}';
-    
+
 else
     fPath = [opts.cPath filesep opts.paradigm filesep opts.cAnimal filesep]; %folder with behavioral data
     for iChecks = 1:10 %check for files repeatedly. Sometimes the server needs a moment to be indexed correctly
@@ -56,7 +56,7 @@ end
 useRec = false(1,size(files,1));
 recDate = NaN(1,size(files,1));
 for iFiles = 1:size(files,1)
-    
+
     [~,a] = fileparts(folders{iFiles});
     try
         if ~isempty(opts.paradigm)
@@ -64,12 +64,12 @@ for iFiles = 1:size(files,1)
         else
             recDate(iFiles) = datenum(a,'yyyy-mm-dd_HH-MM-SS');
         end
-        
+
         % if recording is in date range
         if recDate(iFiles) >= opts.dateRange(1) && recDate(iFiles) <= opts.dateRange(2)
             useRec(iFiles) = true;
         end
-       
+
     catch
         useRec(iFiles) = false; %dont use if date comparison fails
     end
@@ -93,7 +93,7 @@ switchCnt = 0;
 fprintf('%i files found\n', length(files));
 
 for iFiles = 1:size(files,1)
-    
+
     clear SessionData
     if isempty(opts.paradigm)
         [SessionData, bhvFile] = bA_convertTeensySessionData(files{iFiles}, opts);
@@ -101,7 +101,7 @@ for iFiles = 1:size(files,1)
         bhvFile = fullfile(files(iFiles).folder, files(iFiles).name);
         load(bhvFile, 'SessionData'); %load current bhv file
     end
-    
+
     %this gets some information for current session
     sessionTrialCount(iFiles) = SessionData.nTrials;
     normIdx = false(1, SessionData.nTrials);
@@ -119,19 +119,19 @@ for iFiles = 1:size(files,1)
             normIdx = SessionData.Assisted;
         end
     end
-    
+
     performance(1, iFiles) = nan;
     if isfield(SessionData, 'Rewarded')
         performance(1, iFiles) = sum(SessionData.Rewarded(normIdx)) / sum(normIdx);
     end
     useData(iFiles) = sessionTrialCount(iFiles) > opts.minTrials || iFiles < 3; %if file contains enough performed trials
-    
+
     sessionTime{iFiles} = datestr(recDate(iFiles));
     if ~isfield(SessionData, 'sessionDur'); SessionData.sessionDur = SessionData.SessionDur; end
     sessionDur(iFiles) = SessionData.sessionDur;
     sessionRewardAmount(iFiles) = SessionData.givenReward;
     selfPerformFraction = sum(normIdx) / length(normIdx);
-    
+
     if ~isfield(opts, 'expType')
         opts.expType = 'Visual navigation';
     end
@@ -149,7 +149,7 @@ for iFiles = 1:size(files,1)
         end
     end
     sessionType{iFiles} = sprintf('%s - %s', opts.expType, currentState);
-%     sessionType{iFiles} = opts.expType;
+    %     sessionType{iFiles} = opts.expType;
 
     if useData(iFiles) && iFiles > 1
         if floor(recDate(iFiles)) == floor(recDate(iFiles-1))
@@ -160,16 +160,18 @@ for iFiles = 1:size(files,1)
             end
         end
     end
-    
+
     if useData(iFiles)
         saveFile = strrep(bhvFile, opts.cPath, opts.savePath);
         if ~exist(fileparts(saveFile), 'dir'); mkdir(fileparts(saveFile)); end
-        save(strrep(bhvFile, opts.cPath, opts.savePath), 'SessionData'); %make local copy for reproduceability
+        if ~exist(strrep(bhvFile, opts.cPath, opts.savePath), 'file')
+            save(strrep(bhvFile, opts.cPath, opts.savePath), 'SessionData'); %make local copy for reproduceability
+        end
         sessionNotes{iFiles} = [];
         if switchCnt == 0 %first session
             sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of basic training'}]);
             switchCnt = switchCnt + 1;
-            
+
         elseif switchCnt == 1 && strcmpi(currentState, 'Intermediate task performance') && isempty(sessionNotes{iFiles-1})
             sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of Intermediate training'}]);
             switchCnt = switchCnt + 1;
@@ -179,7 +181,7 @@ for iFiles = 1:size(files,1)
             switchCnt = switchCnt + 1;
         end
     end
-    
+
     if rem(iFiles, round(length(files) / 10)) == 0
         fprintf('%i/%i complete\n', iFiles, length(files));
     end
