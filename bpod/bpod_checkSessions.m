@@ -180,6 +180,7 @@ for iFiles = 1:size(files,1)
             sessionNotes{iFiles} = strjoin([sessionNotes{iFiles}, {'Start of Expert training'}]);
             switchCnt = switchCnt + 1;
         end
+        sessionTrialCount(iFiles) = SessionData.nTrials;
     end
 
     if rem(iFiles, round(length(files) / 10)) == 0

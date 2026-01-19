@@ -59,7 +59,9 @@ for iSessions = 1 : length(cSessions)
     cFolder = fullfile(basePath, 'Session Data', cSessions(iSessions).name);
     targFolder = fullfile(targPath, 'Session Data', cSessions(iSessions).name);
     disp(['Current folder is ', cFolder]);
-    
+    if strcmp(cFolder, 'D:\Bpod Local\Data\428\PuffyPenguin\Session Data\20260107_111451')
+        disp('something')
+    end
     if ~exist(targFolder, 'dir')
         % check if recording has been moved to a subfolder
         folderCheck = dir([fullfile(targPath, 'Session Data\'), '*\' cSessions(iSessions).name]);
@@ -70,7 +72,11 @@ for iSessions = 1 : length(cSessions)
     
     if ~exist(targFolder, 'dir')
         disp('Current folder is missing on server. Uploading local data.');
-        copyfile(cFolder, targFolder);
+        [SUCCESS,MESSAGE,MESSAGEID] = copyfile(cFolder, targFolder);
+        disp(SUCCESS)
+        disp(MESSAGE)
+        disp(MESSAGEID)
+
         disp('Copy complete. Removing videos from base folder...');
     end
     
@@ -98,36 +104,22 @@ for iSessions = 1 : length(cSessions)
         end
         
         if ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) %only do this if file is not on tape already
-            % check if video file is broken
-            [~,~,fileType] = fileparts(cFiles(iFiles).name);
-            if ~strcmpi(fileType, '.dat') && cFiles(iFiles).bytes > 0 %dont do this for widefield data or empty files
-                v1 = VideoReader(sourceFile);
-                v2 = VideoReader(targFile);
-                if v1.Duration ~= v2.Duration
-                    clear v2
-                    copyfile(sourceFile, targFile); %make sure there is a copy on the server
-                    fprintf('Copied local file %s to server\n', sourceFile);
-                    v2 = VideoReader(targFile);
-                end
-            else
-                clear v1 v2
-                v1.Duration = 0;
-                v2.Duration = 0;
-            end
+            % check if file is broken, incomplete or missing
+            fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, 1000);
         end
         
         % check if local file can be deleted
         if ~keepLocal
-            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && v1.Duration == v2.Duration)
-                clear v1 v2
-                delete(sourceFile); %only delete local file if there is a copy on the server
+            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && ~fileIncomplete)
+                
+                %only delete local file if there is a complete copy on the server
+                delete(sourceFile); 
                 fprintf('Removed local file %s\n', sourceFile);
+            
             else
-                clear v1 v2
                 error('something very weird happened - something wrong with server communication or server full??');
             end
         else
-            clear v1 v2
             fprintf('Keeping local file %s on local PC\n', sourceFile);
         end
     end

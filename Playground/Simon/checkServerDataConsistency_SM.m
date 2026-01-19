@@ -95,41 +95,24 @@ for iSessions = 1 : length(cSessions)
         
         sourceFile = fullfile(cFolder, cFiles(iFiles).name);
         targFile = fullfile(targFolder, cFiles(iFiles).name);
-         
-        % check if file needs to be copied or is on tape already
-        if ~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)
-%             copyfile(sourceFile, targFile); %make sure there is a copy on the server
-%             fprintf('Copied local file %s to server\n', sourceFile);
-            
-            missingFiles = [missingFiles; {targFile}];
-            disp(['Missing file found: ' targFile]);            
-        end
-        
+                 
         if ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) %only do this if file is not on tape already
-%             % check if video file is broken
-%             [~,~,fileType] = fileparts(cFiles(iFiles).name);
-%             if ~strcmpi(fileType, '.dat') && cFiles(iFiles).bytes > 0 && exist(targFile, 'file') %dont do this for widefield data or empty files
-%                 v1 = VideoReader(sourceFile);
-%                 v2 = VideoReader(targFile);
-%                 if v1.Duration ~= v2.Duration
-%                     clear v2
-% %                     copyfile(sourceFile, targFile); %make sure there is a copy on the server
-% %                     fprintf('Copied local file %s to server\n', sourceFile);
-% %                     v2 = VideoReader(targFile);
-%                     missingFiles = [missingFiles; {targFile}];
-%                     disp(['Missing file found: ' targFile]);
-%                     v2.Duration = 0;
-%                 end
-%             else
-                clear v1 v2
-                v1.Duration = 0;
-                v2.Duration = 0;
-%             end
+            % check if file is broken, incomplete or missing
+            fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, 1000);
+        end
+
+        % check if file needs to be copied or is on tape already
+        if (~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)) || ~fileIncomplete
+            %             copyfile(sourceFile, targFile); %make sure there is a copy on the server
+            %             fprintf('Copied local file %s to server\n', sourceFile);
+
+            missingFiles = [missingFiles; {targFile}];
+            disp(['Missing file found: ' targFile]);
         end
         
         % check if local file can be deleted
         if ~keepLocal
-            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && v1.Duration == v2.Duration)
+            if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && ~fileIncomplete)
                 clear v1 v2
                 delFiles = [delFiles; {sourceFile}];
 %                 delete(sourceFile); %only delete local file if there is a copy on the server

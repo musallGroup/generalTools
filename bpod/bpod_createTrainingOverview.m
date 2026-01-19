@@ -53,7 +53,7 @@ if ~isempty(allOut.sessionDur)
     for iSessions = 1 : length(cIdx)
         fprintf(fileID, [allOut.sessionType{iSessions} '\n']);
         fprintf(fileID, '%s; Session duration: %.2f minutes\n', allOut.sessionTime{iSessions}, allOut.sessionDur(iSessions));
-        fprintf(fileID, 'Performed trials: %i; Performance: %.2f percent\n', allOut.sessionTrialCount(iSessions), allOut.performance(iSessions)*100);
+        fprintf(fileID, 'Number of trials: %i; Performance: %.2f percent\n', allOut.sessionTrialCount(iSessions), allOut.performance(iSessions)*100);
 %         fprintf(fileID, 'Total reward given: %.2f ml\n', allOut.sessionRewardAmount(iSessions));
         if ~isempty(allOut.sessionNotes{iSessions})
             fprintf(fileID, 'Notes: %s\n', allOut.sessionNotes{iSessions});
