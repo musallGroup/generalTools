@@ -102,7 +102,7 @@ for iSessions = 1 : length(cSessions)
         end
 
         % check if file needs to be copied or is on tape already
-        if (~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)) || ~fileIncomplete
+        if (~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)) || fileIncomplete
             %             copyfile(sourceFile, targFile); %make sure there is a copy on the server
             %             fprintf('Copied local file %s to server\n', sourceFile);
 
@@ -113,16 +113,13 @@ for iSessions = 1 : length(cSessions)
         % check if local file can be deleted
         if ~keepLocal
             if (any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || (exist(targFile, 'file') && ~strcmpi(targFile, sourceFile) && ~fileIncomplete)
-                clear v1 v2
                 delFiles = [delFiles; {sourceFile}];
-%                 delete(sourceFile); %only delete local file if there is a copy on the server
+                delete(sourceFile); %only delete local file if there is a copy on the server
                 fprintf('Removed local file %s\n', sourceFile);
             else
-                clear v1 v2
 %                 error('something very weird happened - something wrong with server communication or server full??');
             end
         else
-            clear v1 v2
             fprintf('Keeping local file %s on local PC\n', sourceFile);
         end
     end

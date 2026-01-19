@@ -30,6 +30,7 @@ function fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, nBytes)
     if srcInfo.bytes ~= targInfo.bytes
         warning('File sizes of source and target files differ (%d vs %d bytes).', ...
                 srcInfo.bytes, targInfo.bytes);
+        warning(['!!! DO NOT DELETE ORIGINAL FILE ' sourceFile '!!!']);
         fileIncomplete = true;
         return
     end
@@ -70,6 +71,6 @@ function fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, nBytes)
     if fileIncomplete
         warning(['!!! File copy may be incomplete or corrupted. ', ...
                  'Header/tail mismatch or zero-filled tail detected. !!!']);
-        warning('!!! DO NOT DELETE ORIGINAL FILE !!!');
+        warning(['!!! DO NOT DELETE ORIGINAL FILE ' sourceFile '!!!']);
     end
 end
