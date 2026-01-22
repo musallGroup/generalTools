@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-
 """
-Created on Mon Jan 19 23:00:49 2026
-@author: Simon
-
 tapeTransfer.py
 
 Purpose
@@ -59,6 +55,13 @@ Full hashing of huge files is often too slow (reads all bytes). Partial hashing 
 spread across the file (default: 16 blocks x 64 KB = ~1 MB), providing high confidence without the
 I/O cost of hashing entire 10–200+ GB files. This is meant as a safety check before deleting sources.
 
+Lock file behavior (auto dry-run)
+---------------------------------
+If the target's TAPE_TRANSFER root folder contains:
+    TAPE_TRANSFER_IN_PROGRESS.lock
+then the script will FORCE DRY RUN mode (no copying/moving/deleting), and it will print/log a message
+that transfers are blocked due to the lock.
+
 Logging (default: enabled)
 --------------------------
 By default, the script writes a transfer log to BOTH:
@@ -66,6 +69,13 @@ By default, the script writes a transfer log to BOTH:
 - <target_root>\transferLog_YYYYMMDD_HHMMSS.log
 
 The same log lines go to console AND both files.
+
+The log header includes:
+- user name
+- key arguments (maxSize, overwrite, dry-run, sample settings)
+- whether move-ext / move-keyword were provided and their values (if any)
+- include-ext (if any)
+- whether dry-run was forced due to the lock file
 
 Dry-run notes:
 - --dry-run prints what would happen without copying/moving/deleting.
@@ -88,7 +98,6 @@ Examples (PowerShell)
 
 5) Overwrite existing target files:
    python tapeTransfer.py "D:\data\run1" --overwrite
-   
 """
 
 from __future__ import annotations
@@ -98,6 +107,7 @@ import hashlib
 import os
 import random
 import shutil
+import getpass
 from datetime import datetime
 from pathlib import PureWindowsPath, Path
 from typing import Iterable, Optional, Tuple
@@ -106,6 +116,8 @@ from typing import Iterable, Optional, Tuple
 # Default partial-hash sampling (~1 MB total)
 DEFAULT_SAMPLE_BLOCKS = 16
 DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
+
+LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 
 
 # ----------------------------
@@ -132,6 +144,21 @@ def compute_target_path(source: str) -> PureWindowsPath:
 def path_contains_tape_transfer(p: PureWindowsPath) -> bool:
     """Safety: detect if source already contains TAPE_TRANSFER."""
     return any(part.lower() == "tape_transfer" for part in p.parts)
+
+
+def tape_transfer_root(p: Path) -> Path:
+    """
+    Return the path up to and including the 'TAPE_TRANSFER' directory.
+
+    Example:
+      O:\Massive Data Imaging\TAPE_TRANSFER\A\B -> O:\Massive Data Imaging\TAPE_TRANSFER
+      D:\TAPE_TRANSFER\A\B -> D:\TAPE_TRANSFER
+    """
+    parts = list(PureWindowsPath(str(p)).parts)
+    for i, part in enumerate(parts):
+        if part.lower() == "tape_transfer":
+            return Path(str(PureWindowsPath(*parts[: i + 1])))
+    return p
 
 
 # ----------------------------
@@ -292,7 +319,7 @@ def partial_hash(
     # Fallback if we couldn't get enough unique offsets
     if len(offsets) < blocks:
         offsets = set()
-        step = max_start // blocks
+        step = max_start // blocks if blocks else max_start
         for i in range(blocks):
             offsets.add(min(i * step, max_start))
 
@@ -346,13 +373,8 @@ def open_log_files(
     src_log_path = source_root / default_log_filename(ts)
     tgt_log_path = target_root / default_log_filename(ts)
 
-    src_handle = None
-    tgt_handle = None
-
-    # Source log: always okay (source exists)
     src_handle = open(src_log_path, "a", encoding="utf-8", newline="\n")
 
-    # Target log
     if dry_run:
         if target_root.exists():
             tgt_handle = open(tgt_log_path, "a", encoding="utf-8", newline="\n")
@@ -380,16 +402,13 @@ def transfer_tree(
     dry_run: bool,
     sample_blocks: int,
     sample_block_kb: int,
+    forced_by_lock: bool,
+    lock_file: Path,
+    user_name: str,
 ) -> Tuple[int, int, int, int, Path, Path]:
     """
     Returns:
       (copied, moved, deleted_src, errors, src_log_path, tgt_log_path)
-
-    deleted_src counts cases where:
-      - file was MOVE-category,
-      - destination already existed,
-      - destination verified by partial hash,
-      - source deleted instead of moved.
     """
     max_bytes = int(max_size_gb * 1024**3)
     block_size = sample_block_kb * 1024
@@ -417,17 +436,44 @@ def transfer_tree(
         logf(f"[WARN] Dry-run: target folder does not exist, so target log was not written: {tgt_log_path}")
 
     try:
+        total_mb = (sample_blocks * sample_block_kb) / 1024.0
+
+        # --- Log header / configuration ---
         logf(f"[INFO] Start: {datetime.now().isoformat(timespec='seconds')}")
+        logf(f"[INFO] User: {user_name}")
         logf(f"[INFO] Source: {source_dir}")
         logf(f"[INFO] Target: {target_dir}")
         logf(f"[INFO] Mode: {'DRY RUN' if dry_run else 'LIVE'} | Overwrite: {overwrite}")
-        logf(f"[INFO] Default: COPY everything; MOVE only if > {max_size_gb} GB or matches --move-ext/--move-keyword")
-        total_mb = (sample_blocks * sample_block_kb) / 1024.0
+        logf(f"[INFO] maxSizeGB: {max_size_gb}")
         logf(f"[INFO] Partial-hash sampling: {sample_blocks} blocks x {sample_block_kb} KB (~{total_mb:.2f} MB/file)")
-        logf("[INFO] MOVE-category + dst exists (no --overwrite): delete source ONLY if size + partial-hash match")
-        logf("-" * 90)
 
-        # In live mode, ensure target root exists before walking (so we can create subdirs)
+        # Record optional inputs explicitly
+        if move_exts:
+            logf(f"[INFO] move-ext provided: {sorted(move_exts)}")
+        else:
+            logf("[INFO] move-ext provided: <none>")
+
+        if move_keywords:
+            logf(f"[INFO] move-keyword provided: {move_keywords}")
+        else:
+            logf("[INFO] move-keyword provided: <none>")
+
+        if include_exts:
+            logf(f"[INFO] include-ext provided: {sorted(include_exts)}")
+        else:
+            logf("[INFO] include-ext provided: <none>")
+
+        if forced_by_lock:
+            logf(f"[LOCK] Found lock file: {lock_file}")
+            logf("[LOCK] Transfers are blocked. DRY RUN was forced; no data will be copied/moved/deleted.")
+        else:
+            logf(f"[INFO] Lock check: no lock file found at {lock_file}")
+
+        logf("[INFO] Default: COPY everything; MOVE only if > maxSize or matches --move-ext/--move-keyword")
+        logf("[INFO] MOVE-category + dst exists (no --overwrite): delete source ONLY if size + partial-hash match")
+        logf("-" * 95)
+
+        # In live mode, ensure target root exists before walking
         if not dry_run:
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -479,8 +525,7 @@ def transfer_tree(
                                 continue
                     else:
                         if do_move:
-                            # Default cleanup behavior for MOVE-category:
-                            # If destination exists and matches, delete source.
+                            # MOVE-category: dst exists -> delete source ONLY if verified
                             rel_path_str = str((rel_dir / fname).as_posix())
                             try:
                                 ok = partial_hash_match(
@@ -541,7 +586,7 @@ def transfer_tree(
                             continue
                     copied += 1
 
-        logf("-" * 90)
+        logf("-" * 95)
         logf(f"[INFO] Done: {datetime.now().isoformat(timespec='seconds')}")
         logf(f"[INFO] Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | Errors: {errors}")
 
@@ -558,7 +603,6 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Stage data into a derived TAPE_TRANSFER folder by copying/moving files.")
     ap.add_argument("source", help="Source folder path (Windows path or UNC path).")
 
-    # Requested defaults:
     ap.add_argument("--maxSize", type=float, default=10.0,
                     help="Move files larger than this size (GB). Default: 10")
 
@@ -583,6 +627,8 @@ def main() -> int:
 
     args = ap.parse_args()
 
+    user_name = getpass.getuser()
+
     src_pw = PureWindowsPath(args.source)
     if path_contains_tape_transfer(src_pw) and not args.allow_source_in_tape_transfer:
         print("[ERROR] Source path contains 'TAPE_TRANSFER'. Refusing by default to avoid modifying staged data.")
@@ -600,23 +646,36 @@ def main() -> int:
         print(f"[ERROR] Source is not a directory: {src}")
         return 2
 
+    # ---- LOCK CHECK (auto dry-run) ----
+    tape_root = tape_transfer_root(tgt)
+    lock_file = tape_root / LOCK_FILENAME
+    forced_by_lock = False
+    if lock_file.exists():
+        forced_by_lock = True
+        args.dry_run = True
+        print(f"[LOCK] Found lock file: {lock_file}")
+        print("[LOCK] TAPE_TRANSFER is currently in progress.")
+        print("[LOCK] No data will be copied/moved/deleted. Running in DRY RUN mode.\n")
+
     move_exts = normalize_exts(args.move_ext)
     include_exts = normalize_exts(args.include_ext)
     move_keywords = normalize_keywords(args.move_keyword)
 
+    total_mb = (args.sample_blocks * args.sample_block_kb) / 1024.0
+
+    print(f"User: {user_name}")
     print(f"Source: {src}")
     print(f"Target: {tgt}")
+    print(f"TAPE_TRANSFER root: {tape_root}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'} | Overwrite: {args.overwrite}")
-    print(f"Default: COPY everything; MOVE only if > {args.maxSize} GB or matches --move-ext/--move-keyword")
-    if move_exts:
-        print(f"Move extensions: {sorted(move_exts)}")
-    if move_keywords:
-        print(f"Move keywords: {move_keywords}")
-    if include_exts:
-        print(f"Include extensions only: {sorted(include_exts)}")
-    total_mb = (args.sample_blocks * args.sample_block_kb) / 1024.0
+    if forced_by_lock:
+        print("NOTE: DRY RUN was forced due to TAPE_TRANSFER_IN_PROGRESS.lock")
+    print(f"maxSize: {args.maxSize} GB")
+    print(f"move-ext: {sorted(move_exts) if move_exts else '<none>'}")
+    print(f"move-keyword: {move_keywords if move_keywords else '<none>'}")
+    print(f"include-ext: {sorted(include_exts) if include_exts else '<none>'}")
     print(f"Partial-hash sampling: {args.sample_blocks} blocks x {args.sample_block_kb} KB (~{total_mb:.2f} MB/file)")
-    print("-" * 90)
+    print("-" * 95)
 
     copied, moved, deleted_src, errors, src_log_path, tgt_log_path = transfer_tree(
         source_dir=src,
@@ -629,12 +688,19 @@ def main() -> int:
         dry_run=args.dry_run,
         sample_blocks=args.sample_blocks,
         sample_block_kb=args.sample_block_kb,
+        forced_by_lock=forced_by_lock,
+        lock_file=lock_file,
+        user_name=user_name,
     )
 
-    print("-" * 90)
+    print("-" * 95)
     print(f"Done. Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | Errors: {errors}")
     print(f"Source log: {src_log_path}")
     print(f"Target log: {tgt_log_path} (may not exist in dry-run if target folder doesn't exist)")
+
+    # If we were blocked by lock, return a distinct code (optional but useful for automation)
+    if forced_by_lock:
+        return 3
     return 0 if errors == 0 else 1
 
 
