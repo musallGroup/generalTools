@@ -588,12 +588,7 @@ def transfer_tree(
 
                 rel_path_posix = str((rel_dir / fname).as_posix())
 
-                # --- Manifest-based skip: already processed previously ---
-                if manifest_has_entry(manifest_index, rel_path_posix, int(src_size), float(src_mtime)):
-                    logf(f"[SKIP-MANIFEST] Already staged/archived per manifest: {rel_path_posix}")
-                    skipped_manifest += 1
-                    continue
-
+                # Decide move/copy classification under *current* rules
                 do_move = should_move(
                     src_file=src_file,
                     file_size_bytes=int(src_size),
@@ -602,70 +597,74 @@ def transfer_tree(
                     move_keywords=move_keywords,
                 )
 
-                # If destination exists
-                if dst_file.exists():
-                    if overwrite:
+                # --- NEW: cleanup path BEFORE manifest skip ---
+                # If under current rules this file should be MOVED, but it already exists in target,
+                # then delete the source after verifying dst matches src (size + partial hash).
+                if dst_file.exists() and (not overwrite) and do_move:
+                    try:
+                        ok = partial_hash_match(
+                            src_file, dst_file, rel_path_posix,
+                            blocks=sample_blocks, block_size=block_size
+                        )
+                    except Exception as e:
+                        logf(f"[ERROR] Partial-hash compare failed: {src_file} vs {dst_file} ({e})")
+                        errors += 1
+                        ok = False
+
+                    if ok:
                         if dry_run:
-                            logf(f"[DEL ] {dst_file}")
+                            logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
                         else:
                             try:
-                                dst_file.unlink()
-                                logf(f"[DEL ] {dst_file}")
+                                src_file.unlink()
+                                logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
                             except Exception as e:
-                                logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
+                                logf(f"[ERROR] Cannot delete source: {src_file} ({e})")
                                 errors += 1
-                                continue
-                    else:
-                        if do_move:
-                            # MOVE-category: dst exists -> delete source ONLY if verified
-                            try:
-                                ok = partial_hash_match(
-                                    src_file, dst_file, rel_path_posix,
-                                    blocks=sample_blocks, block_size=block_size
-                                )
-                            except Exception as e:
-                                logf(f"[ERROR] Partial-hash compare failed: {src_file} vs {dst_file} ({e})")
-                                errors += 1
+                                # If we couldn't delete, keep going (do not treat as staged)
                                 ok = False
 
-                            if ok:
-                                if dry_run:
-                                    logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
-                                else:
-                                    try:
-                                        src_file.unlink()
-                                        logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
-                                    except Exception as e:
-                                        logf(f"[ERROR] Cannot delete source: {src_file} ({e})")
-                                        errors += 1
-                                        continue
-
-                                deleted_src += 1
-
-                                # Manifest record for DEL-SRC
-                                rec = {
-                                    "ts": datetime.now().isoformat(timespec="seconds"),
-                                    "user": user_name,
-                                    "source_root": str(source_dir),
-                                    "target_root": str(target_dir),
-                                    "relpath": rel_path_posix,
-                                    "size": int(src_size),
-                                    "mtime": float(src_mtime),
-                                    "action": "DEL-SRC",
-                                    "note": "dst existed; verified by partial hash",
-                                }
-                                append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
-                                manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
-                            else:
-                                logf(f"[SKIP] dst exists but does NOT match (kept src): {dst_file}")
+                        if ok:
+                            deleted_src += 1
+                            # Write a manifest record even if it already existed; it documents the cleanup event.
+                            rec = {
+                                "ts": datetime.now().isoformat(timespec="seconds"),
+                                "user": user_name,
+                                "source_root": str(source_dir),
+                                "target_root": str(target_dir),
+                                "relpath": rel_path_posix,
+                                "size": int(src_size),
+                                "mtime": float(src_mtime),
+                                "action": "DEL-SRC",
+                                "note": "cleanup: dst existed; verified by partial hash; deleted source under current move rules",
+                            }
+                            append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
+                            manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
                             continue
-
-                        # COPY-category: skip logic based on size+mtime
-                        if same_file_size_and_mtime(src_file, dst_file):
-                            logf(f"[SKIP] Exists (size+mtime match): {dst_file}")
-                        else:
-                            logf(f"[SKIP] Exists (mismatch; use --overwrite to replace): {dst_file}")
+                    else:
+                        # dst exists but mismatch -> do NOT delete source
+                        logf(f"[SKIP] dst exists but does NOT match (kept src): {dst_file}")
                         continue
+
+                # --- Manifest-based skip (only for staging actions) ---
+                # If we already have a manifest entry for this file version, don't re-stage it.
+                if manifest_has_entry(manifest_index, rel_path_posix, int(src_size), float(src_mtime)):
+                    logf(f"[SKIP-MANIFEST] Already staged/archived per manifest: {rel_path_posix}")
+                    skipped_manifest += 1
+                    continue
+
+                # If destination exists and overwrite is requested, delete destination and proceed.
+                if dst_file.exists() and overwrite:
+                    if dry_run:
+                        logf(f"[DEL ] {dst_file}")
+                    else:
+                        try:
+                            dst_file.unlink()
+                            logf(f"[DEL ] {dst_file}")
+                        except Exception as e:
+                            logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
+                            errors += 1
+                            continue
 
                 # Destination does not exist (or we deleted it due to overwrite)
                 if do_move:
