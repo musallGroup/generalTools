@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 tapeTransfer.py
 
@@ -8,8 +9,22 @@ Stage data for tape transfer by mirroring a source directory tree into a derived
 with rules for where to insert "TAPE_TRANSFER" into the path. By default, the script COPIES files;
 it MOVES only large files (default threshold 10 GB) or files matching explicit "move" criteria.
 
-This is designed for Windows paths, but will also accept UNC paths (\\server\share\...).
 
+Examples (PowerShell)
+---------------------
+1) Basic:
+   python tapeTransfer.py "O:\Massive Data Imaging\Proj\Session1"
+
+2) Dry run:
+   python tapeTransfer.py "O:\Massive Data Imaging\Proj\Session1" --dry-run
+
+3) Force move some file types / keywords:
+   python tapeTransfer.py "D:\data\run1" --move-ext .tif .tiff .bin --move-keyword raw video
+
+4) Ignore manifest (force re-staging checks off):
+   python tapeTransfer.py "D:\data\run1" --ignore-manifest
+   
+   
 Path mapping rules
 ------------------
 1) If the source path starts with:
@@ -21,6 +36,7 @@ Path mapping rules
       D:\foo\bar           -> D:\TAPE_TRANSFER\foo\bar
       \\srv\share\foo\bar  -> \\srv\share\TAPE_TRANSFER\foo\bar
 
+
 Transfer rules
 --------------
 Default: COPY everything.
@@ -29,6 +45,7 @@ MOVE a file if ANY of the following are true:
 - file size > --maxSize (GB)        [default: 10 GB]
 - file extension matches --move-ext (e.g. .bin .dat .tif)
 - filename contains --move-keyword  (case-insensitive substring match)
+
 
 Existing destination behavior
 -----------------------------
@@ -48,12 +65,15 @@ If destination file already exists:
             (1) same file size AND
             (2) deterministic partial-hash match (default ~1 MB sampled across the file)
         - If verification fails, we skip and keep the source (safety).
+        - On successful DEL-SRC, we also write a manifest record.
+
 
 Why partial-hash?
 ----------------
 Full hashing of huge files is often too slow (reads all bytes). Partial hashing reads small blocks
 spread across the file (default: 16 blocks x 64 KB = ~1 MB), providing high confidence without the
 I/O cost of hashing entire 10–200+ GB files. This is meant as a safety check before deleting sources.
+
 
 Lock file behavior (auto dry-run)
 ---------------------------------
@@ -62,55 +82,59 @@ If the target's TAPE_TRANSFER root folder contains:
 then the script will FORCE DRY RUN mode (no copying/moving/deleting), and it will print/log a message
 that transfers are blocked due to the lock.
 
+
 Logging (default: enabled)
 --------------------------
 By default, the script writes a transfer log to BOTH:
 - <source_root>\transferLog_YYYYMMDD_HHMMSS.log
 - <target_root>\transferLog_YYYYMMDD_HHMMSS.log
 
-The same log lines go to console AND both files.
-
-The log header includes:
-- user name
-- key arguments (maxSize, overwrite, dry-run, sample settings)
-- whether move-ext / move-keyword were provided and their values (if any)
-- include-ext (if any)
-- whether dry-run was forced due to the lock file
+Manifest is separate and lives in the source folder:
+- <source_root>\.tape_transfer\manifest.ndjson
 
 Dry-run notes:
 - --dry-run prints what would happen without copying/moving/deleting.
 - It will still write the SOURCE log (source exists).
 - It writes the TARGET log only if the target folder already exists (dry-run does not create it).
+- In dry-run, the manifest is NOT modified.
+  
+   
+Manifest file
+-------------------
+This version adds a persistent MANIFEST in the SOURCE folder to prevent re-staging data that has
+already been staged/archived, even if the target TAPE_TRANSFER folder gets emptied later.
 
-Examples (PowerShell)
----------------------
-1) Basic:
-   python tapeTransfer.py "O:\Massive Data Imaging\Proj\Session1"
+After each successful file operation (COPY/MOVE/DEL-SRC), the script writes one line to an
+append-only manifest file in the source folder:
 
-2) Dry run:
-   python tapeTransfer.py "O:\Massive Data Imaging\Proj\Session1" --dry-run
+    <source>\.tape_transfer\manifest.ndjson
 
-3) Force move some file types / keywords:
-   python tapeTransfer.py "D:\data\run1" --move-ext .tif .tiff .bin --move-keyword raw video
+Each line is a JSON object containing:
+- timestamp
+- user
+- source root, target root
+- relative file path
+- size, mtime
+- action performed (COPY / MOVE / DEL-SRC)
+- optional notes
 
-4) Override maxSize (GB):
-   python tapeTransfer.py "D:\data\run1" --maxSize 25
-
-5) Overwrite existing target files:
-   python tapeTransfer.py "D:\data\run1" --overwrite
+On subsequent runs, the script loads the manifest and will SKIP files that already have a manifest
+entry with the same (relative path, size, mtime). This remains effective even if TAPE_TRANSFER is
+emptied by the archiving workflow.
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
+import json
 import os
 import random
 import shutil
-import getpass
 from datetime import datetime
 from pathlib import PureWindowsPath, Path
-from typing import Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 
 # Default partial-hash sampling (~1 MB total)
@@ -124,10 +148,6 @@ LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 # Path mapping
 # ----------------------------
 def compute_target_path(source: str) -> PureWindowsPath:
-    """
-    Compute the derived target path by inserting "TAPE_TRANSFER" per the rules.
-    PureWindowsPath is used so Windows path semantics apply even if run elsewhere.
-    """
     p = PureWindowsPath(source)
     parts = list(p.parts)
     if not parts:
@@ -142,18 +162,10 @@ def compute_target_path(source: str) -> PureWindowsPath:
 
 
 def path_contains_tape_transfer(p: PureWindowsPath) -> bool:
-    """Safety: detect if source already contains TAPE_TRANSFER."""
     return any(part.lower() == "tape_transfer" for part in p.parts)
 
 
 def tape_transfer_root(p: Path) -> Path:
-    """
-    Return the path up to and including the 'TAPE_TRANSFER' directory.
-
-    Example:
-      O:\Massive Data Imaging\TAPE_TRANSFER\A\B -> O:\Massive Data Imaging\TAPE_TRANSFER
-      D:\TAPE_TRANSFER\A\B -> D:\TAPE_TRANSFER
-    """
     parts = list(PureWindowsPath(str(p)).parts)
     for i, part in enumerate(parts):
         if part.lower() == "tape_transfer":
@@ -165,7 +177,6 @@ def tape_transfer_root(p: Path) -> Path:
 # CLI parsing helpers
 # ----------------------------
 def normalize_exts(exts: Optional[Iterable[str]]) -> set[str]:
-    """Normalize extensions to lowercase with leading '.'."""
     if not exts:
         return set()
     out: set[str] = set()
@@ -180,7 +191,6 @@ def normalize_exts(exts: Optional[Iterable[str]]) -> set[str]:
 
 
 def normalize_keywords(keys: Optional[Iterable[str]]) -> list[str]:
-    """Normalize keywords to lowercase; used as substring matches on filename."""
     if not keys:
         return []
     return [k.lower() for k in keys if k and k.strip()]
@@ -190,7 +200,6 @@ def normalize_keywords(keys: Optional[Iterable[str]]) -> list[str]:
 # Filesystem helpers
 # ----------------------------
 def ensure_dir(path: Path, dry_run: bool, logf) -> None:
-    """Create directory if missing (unless dry-run)."""
     if path.exists():
         return
     if dry_run:
@@ -209,11 +218,6 @@ def safe_stat_size_mtime(p: Path) -> Tuple[Optional[int], Optional[float]]:
 
 
 def same_file_size_and_mtime(src: Path, dst: Path, mtime_tolerance_s: float = 2.0) -> bool:
-    """
-    Default "already transferred" heuristic for COPY-category files:
-    - same size
-    - mtimes match within tolerance (filesystem timestamp resolution differences)
-    """
     if not dst.exists():
         return False
     ss, sm = safe_stat_size_mtime(src)
@@ -229,7 +233,6 @@ def same_file_size_and_mtime(src: Path, dst: Path, mtime_tolerance_s: float = 2.
 # Move/copy decision
 # ----------------------------
 def should_process_by_include_ext(src_file: Path, include_exts: set[str]) -> bool:
-    """Optional allow-list filtering: if include_exts is set, skip other extensions."""
     if not include_exts:
         return True
     return src_file.suffix.lower() in include_exts
@@ -242,7 +245,6 @@ def should_move(
     move_exts: set[str],
     move_keywords: list[str],
 ) -> bool:
-    """Return True if a file should be MOVED (otherwise it will be COPIED)."""
     if file_size_bytes > max_bytes:
         return True
     if move_exts and src_file.suffix.lower() in move_exts:
@@ -258,10 +260,6 @@ def should_move(
 # Partial hashing for safety
 # ----------------------------
 def deterministic_seed(rel_path_str: str, size_bytes: int) -> int:
-    """
-    Deterministic seed based on file relative path + file size.
-    This ensures the sampled offsets are reproducible across runs.
-    """
     h = hashlib.blake2b(digest_size=8)
     h.update(rel_path_str.encode("utf-8", errors="ignore"))
     h.update(b"|")
@@ -269,20 +267,7 @@ def deterministic_seed(rel_path_str: str, size_bytes: int) -> int:
     return int.from_bytes(h.digest(), byteorder="big", signed=False)
 
 
-def partial_hash(
-    file_path: Path,
-    rel_path_str: str,
-    *,
-    blocks: int,
-    block_size: int,
-) -> str:
-    """
-    Deterministic partial hash:
-    - hashes file size + sampled blocks across the file (blake2b)
-    - for small files, hashes the full content
-
-    This is a compromise between speed and confidence for very large files.
-    """
+def partial_hash(file_path: Path, rel_path_str: str, *, blocks: int, block_size: int) -> str:
     size, _ = safe_stat_size_mtime(file_path)
     if size is None:
         raise OSError(f"Cannot stat {file_path}")
@@ -309,14 +294,12 @@ def partial_hash(
     attempts = 0
     max_attempts = blocks * 20
 
-    # Choose offsets with 4KB alignment (often a little friendlier for storage)
     while len(offsets) < blocks and attempts < max_attempts:
         attempts += 1
         off = rng.randint(0, max_start)
         off = (off // 4096) * 4096
         offsets.add(min(off, max_start))
 
-    # Fallback if we couldn't get enough unique offsets
     if len(offsets) < blocks:
         offsets = set()
         step = max_start // blocks if blocks else max_start
@@ -332,22 +315,118 @@ def partial_hash(
 
 
 def partial_hash_match(src: Path, dst: Path, rel_path_str: str, blocks: int, block_size: int) -> bool:
-    """Verify src and dst match by (1) size and (2) partial hash."""
     ss, _ = safe_stat_size_mtime(src)
     ds, _ = safe_stat_size_mtime(dst)
     if ss is None or ds is None or ss != ds:
         return False
-
     return partial_hash(src, rel_path_str, blocks=blocks, block_size=block_size) == partial_hash(
         dst, rel_path_str, blocks=blocks, block_size=block_size
     )
 
 
 # ----------------------------
+# Manifest (NDJSON, append-only)
+# ----------------------------
+def manifest_dir(source_root: Path) -> Path:
+    return source_root / ".tape_transfer"
+
+
+def manifest_path(source_root: Path) -> Path:
+    return manifest_dir(source_root) / "manifest.ndjson"
+
+
+def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[str, Tuple[int, float]]:
+    """
+    Load manifest.ndjson into an index:
+      relpath_posix -> (size, mtime)
+
+    If ignore_manifest is True, returns an empty index.
+    """
+    if ignore_manifest:
+        logf("[MANIFEST] Ignoring manifest (--ignore-manifest).")
+        return {}
+
+    mpath = manifest_path(source_root)
+    if not mpath.exists():
+        logf(f"[MANIFEST] No manifest found yet: {mpath}")
+        return {}
+
+    index: Dict[str, Tuple[int, float]] = {}
+    bad_lines = 0
+    total = 0
+
+    try:
+        with open(mpath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                total += 1
+                try:
+                    rec = json.loads(line)
+                    rel = rec.get("relpath")
+                    size = rec.get("size")
+                    mtime = rec.get("mtime")
+                    if isinstance(rel, str) and isinstance(size, int) and isinstance(mtime, (int, float)):
+                        # Keep latest for that relpath
+                        index[rel] = (int(size), float(mtime))
+                except Exception:
+                    bad_lines += 1
+    except Exception as e:
+        logf(f"[MANIFEST][ERROR] Failed reading manifest: {mpath} ({e})")
+        return {}
+
+    logf(f"[MANIFEST] Loaded {len(index)} entries from {mpath} (lines={total}, bad_lines={bad_lines})")
+    return index
+
+
+def manifest_has_entry(
+    index: Dict[str, Tuple[int, float]],
+    relpath_posix: str,
+    size: int,
+    mtime: float,
+    mtime_tolerance_s: float = 2.0,
+) -> bool:
+    """
+    Return True if manifest index contains relpath with matching size and mtime (within tolerance).
+    """
+    if relpath_posix not in index:
+        return False
+    s0, t0 = index[relpath_posix]
+    return (s0 == size) and (abs(t0 - mtime) <= mtime_tolerance_s)
+
+
+def append_manifest_record(
+    source_root: Path,
+    record: dict,
+    *,
+    dry_run: bool,
+    logf,
+) -> None:
+    """
+    Append one JSON record as a line to manifest.ndjson (unless dry_run).
+    """
+    mdir = manifest_dir(source_root)
+    mpath = manifest_path(source_root)
+
+    if dry_run:
+        logf(f"[MANIFEST][DRY] Would append record: relpath={record.get('relpath')} action={record.get('action')}")
+        return
+
+    try:
+        mdir.mkdir(parents=True, exist_ok=True)
+        with open(mpath, "a", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        logf(f"[MANIFEST] Appended: {record.get('action')} {record.get('relpath')}")
+    except Exception as e:
+        # We log, but do not stop the transfer; manifest is a robustness aid.
+        logf(f"[MANIFEST][ERROR] Failed to append manifest record ({e})")
+
+
+# ----------------------------
 # Logging helpers
 # ----------------------------
 def timestamp_for_log() -> str:
-    """YYYYMMDD_HHMMSS"""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
@@ -362,14 +441,6 @@ def open_log_files(
     dry_run: bool,
     ts: str,
 ) -> Tuple[Optional[object], Optional[object], Path, Path]:
-    """
-    Open source and target log files.
-    - Always writes source log (source exists).
-    - For target log:
-        - In live mode: create target directory and write log there.
-        - In dry-run: only write target log if target directory already exists.
-    Returns (src_handle, tgt_handle, src_log_path, tgt_log_path).
-    """
     src_log_path = source_root / default_log_filename(ts)
     tgt_log_path = target_root / default_log_filename(ts)
 
@@ -405,15 +476,16 @@ def transfer_tree(
     forced_by_lock: bool,
     lock_file: Path,
     user_name: str,
-) -> Tuple[int, int, int, int, Path, Path]:
+    ignore_manifest: bool,
+) -> Tuple[int, int, int, int, int, Path, Path]:
     """
     Returns:
-      (copied, moved, deleted_src, errors, src_log_path, tgt_log_path)
+      (copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path)
     """
     max_bytes = int(max_size_gb * 1024**3)
     block_size = sample_block_kb * 1024
 
-    copied = moved = deleted_src = errors = 0
+    copied = moved = deleted_src = skipped_manifest = errors = 0
 
     ts = timestamp_for_log()
     src_log_handle, tgt_log_handle, src_log_path, tgt_log_path = open_log_files(
@@ -438,7 +510,7 @@ def transfer_tree(
     try:
         total_mb = (sample_blocks * sample_block_kb) / 1024.0
 
-        # --- Log header / configuration ---
+        # Log header / configuration
         logf(f"[INFO] Start: {datetime.now().isoformat(timespec='seconds')}")
         logf(f"[INFO] User: {user_name}")
         logf(f"[INFO] Source: {source_dir}")
@@ -447,7 +519,6 @@ def transfer_tree(
         logf(f"[INFO] maxSizeGB: {max_size_gb}")
         logf(f"[INFO] Partial-hash sampling: {sample_blocks} blocks x {sample_block_kb} KB (~{total_mb:.2f} MB/file)")
 
-        # Record optional inputs explicitly
         if move_exts:
             logf(f"[INFO] move-ext provided: {sorted(move_exts)}")
         else:
@@ -469,9 +540,14 @@ def transfer_tree(
         else:
             logf(f"[INFO] Lock check: no lock file found at {lock_file}")
 
+        logf(f"[INFO] Manifest: {manifest_path(source_dir)}")
+        logf(f"[INFO] Manifest mode: {'IGNORED' if ignore_manifest else 'ACTIVE'}")
         logf("[INFO] Default: COPY everything; MOVE only if > maxSize or matches --move-ext/--move-keyword")
         logf("[INFO] MOVE-category + dst exists (no --overwrite): delete source ONLY if size + partial-hash match")
-        logf("-" * 95)
+        logf("-" * 110)
+
+        # Load manifest index (for skip decisions)
+        manifest_index = load_manifest_index(source_dir, logf=logf, ignore_manifest=ignore_manifest)
 
         # In live mode, ensure target root exists before walking
         if not dry_run:
@@ -487,7 +563,15 @@ def transfer_tree(
                 ensure_dir(out_root / d, dry_run=dry_run, logf=logf)
 
             for fname in files:
+                # Skip logs and manifest folder itself to avoid re-transferring control files
+                if fname.startswith("transferLog_") and fname.endswith(".log"):
+                    continue
+
                 src_file = root_path / fname
+
+                # Never transfer the manifest directory itself
+                if ".tape_transfer" in src_file.parts:
+                    continue
 
                 if not should_process_by_include_ext(src_file, include_exts):
                     logf(f"[SKIP] Not in --include-ext: {src_file}")
@@ -496,15 +580,23 @@ def transfer_tree(
                 dst_file = out_root / fname
                 ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
 
-                src_size, _ = safe_stat_size_mtime(src_file)
-                if src_size is None:
+                src_size, src_mtime = safe_stat_size_mtime(src_file)
+                if src_size is None or src_mtime is None:
                     logf(f"[ERROR] Cannot stat: {src_file}")
                     errors += 1
                     continue
 
+                rel_path_posix = str((rel_dir / fname).as_posix())
+
+                # --- Manifest-based skip: already processed previously ---
+                if manifest_has_entry(manifest_index, rel_path_posix, int(src_size), float(src_mtime)):
+                    logf(f"[SKIP-MANIFEST] Already staged/archived per manifest: {rel_path_posix}")
+                    skipped_manifest += 1
+                    continue
+
                 do_move = should_move(
                     src_file=src_file,
-                    file_size_bytes=src_size,
+                    file_size_bytes=int(src_size),
                     max_bytes=max_bytes,
                     move_exts=move_exts,
                     move_keywords=move_keywords,
@@ -526,10 +618,9 @@ def transfer_tree(
                     else:
                         if do_move:
                             # MOVE-category: dst exists -> delete source ONLY if verified
-                            rel_path_str = str((rel_dir / fname).as_posix())
                             try:
                                 ok = partial_hash_match(
-                                    src_file, dst_file, rel_path_str,
+                                    src_file, dst_file, rel_path_posix,
                                     blocks=sample_blocks, block_size=block_size
                                 )
                             except Exception as e:
@@ -548,7 +639,23 @@ def transfer_tree(
                                         logf(f"[ERROR] Cannot delete source: {src_file} ({e})")
                                         errors += 1
                                         continue
+
                                 deleted_src += 1
+
+                                # Manifest record for DEL-SRC
+                                rec = {
+                                    "ts": datetime.now().isoformat(timespec="seconds"),
+                                    "user": user_name,
+                                    "source_root": str(source_dir),
+                                    "target_root": str(target_dir),
+                                    "relpath": rel_path_posix,
+                                    "size": int(src_size),
+                                    "mtime": float(src_mtime),
+                                    "action": "DEL-SRC",
+                                    "note": "dst existed; verified by partial hash",
+                                }
+                                append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
+                                manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
                             else:
                                 logf(f"[SKIP] dst exists but does NOT match (kept src): {dst_file}")
                             continue
@@ -563,34 +670,64 @@ def transfer_tree(
                 # Destination does not exist (or we deleted it due to overwrite)
                 if do_move:
                     if dry_run:
-                        logf(f"[MOVE] {src_file} -> {dst_file} ({src_size / 1024**3:.3f} GB)")
+                        logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                     else:
                         try:
                             shutil.move(str(src_file), str(dst_file))
-                            logf(f"[MOVE] {src_file} -> {dst_file} ({src_size / 1024**3:.3f} GB)")
+                            logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                         except Exception as e:
                             logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({e})")
                             errors += 1
                             continue
                     moved += 1
+
+                    # Manifest record for MOVE
+                    rec = {
+                        "ts": datetime.now().isoformat(timespec="seconds"),
+                        "user": user_name,
+                        "source_root": str(source_dir),
+                        "target_root": str(target_dir),
+                        "relpath": rel_path_posix,
+                        "size": int(src_size),
+                        "mtime": float(src_mtime),
+                        "action": "MOVE",
+                    }
+                    append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
+                    manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
+
                 else:
                     if dry_run:
-                        logf(f"[COPY] {src_file} -> {dst_file} ({src_size / 1024**2:.1f} MB)")
+                        logf(f"[COPY] {src_file} -> {dst_file} ({int(src_size) / 1024**2:.1f} MB)")
                     else:
                         try:
                             shutil.copy2(str(src_file), str(dst_file))
-                            logf(f"[COPY] {src_file} -> {dst_file} ({src_size / 1024**2:.1f} MB)")
+                            logf(f"[COPY] {src_file} -> {dst_file} ({int(src_size) / 1024**2:.1f} MB)")
                         except Exception as e:
                             logf(f"[ERROR] COPY failed: {src_file} -> {dst_file} ({e})")
                             errors += 1
                             continue
                     copied += 1
 
-        logf("-" * 95)
-        logf(f"[INFO] Done: {datetime.now().isoformat(timespec='seconds')}")
-        logf(f"[INFO] Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | Errors: {errors}")
+                    # Manifest record for COPY
+                    rec = {
+                        "ts": datetime.now().isoformat(timespec="seconds"),
+                        "user": user_name,
+                        "source_root": str(source_dir),
+                        "target_root": str(target_dir),
+                        "relpath": rel_path_posix,
+                        "size": int(src_size),
+                        "mtime": float(src_mtime),
+                        "action": "COPY",
+                    }
+                    append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
+                    manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
 
-        return copied, moved, deleted_src, errors, src_log_path, tgt_log_path
+        logf("-" * 110)
+        logf(f"[INFO] Done: {datetime.now().isoformat(timespec='seconds')}")
+        logf(f"[INFO] Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | "
+             f"Skipped(manifest): {skipped_manifest} | Errors: {errors}")
+
+        return copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path
 
     finally:
         if src_log_handle:
@@ -625,6 +762,9 @@ def main() -> int:
     ap.add_argument("--sample-block-kb", type=int, default=DEFAULT_SAMPLE_BLOCK_KB,
                     help=f"Block size (KB) for partial hash. Default: {DEFAULT_SAMPLE_BLOCK_KB} (~1MB total)")
 
+    ap.add_argument("--ignore-manifest", action="store_true",
+                    help="Ignore manifest and process files as if none were previously staged/archived.")
+
     args = ap.parse_args()
 
     user_name = getpass.getuser()
@@ -646,7 +786,7 @@ def main() -> int:
         print(f"[ERROR] Source is not a directory: {src}")
         return 2
 
-    # ---- LOCK CHECK (auto dry-run) ----
+    # LOCK CHECK (auto dry-run)
     tape_root = tape_transfer_root(tgt)
     lock_file = tape_root / LOCK_FILENAME
     forced_by_lock = False
@@ -675,9 +815,10 @@ def main() -> int:
     print(f"move-keyword: {move_keywords if move_keywords else '<none>'}")
     print(f"include-ext: {sorted(include_exts) if include_exts else '<none>'}")
     print(f"Partial-hash sampling: {args.sample_blocks} blocks x {args.sample_block_kb} KB (~{total_mb:.2f} MB/file)")
-    print("-" * 95)
+    print(f"Manifest: {manifest_path(src)} ({'ignored' if args.ignore_manifest else 'active'})")
+    print("-" * 110)
 
-    copied, moved, deleted_src, errors, src_log_path, tgt_log_path = transfer_tree(
+    copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path = transfer_tree(
         source_dir=src,
         target_dir=tgt,
         max_size_gb=args.maxSize,
@@ -691,14 +832,17 @@ def main() -> int:
         forced_by_lock=forced_by_lock,
         lock_file=lock_file,
         user_name=user_name,
+        ignore_manifest=args.ignore_manifest,
     )
 
-    print("-" * 95)
-    print(f"Done. Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | Errors: {errors}")
+    print("-" * 110)
+    print(f"Done. Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | "
+          f"Skipped(manifest): {skipped_manifest} | Errors: {errors}")
     print(f"Source log: {src_log_path}")
     print(f"Target log: {tgt_log_path} (may not exist in dry-run if target folder doesn't exist)")
+    print(f"Manifest: {manifest_path(src)}")
 
-    # If we were blocked by lock, return a distinct code (optional but useful for automation)
+    # If we were blocked by lock, return a distinct code (useful for automation)
     if forced_by_lock:
         return 3
     return 0 if errors == 0 else 1
