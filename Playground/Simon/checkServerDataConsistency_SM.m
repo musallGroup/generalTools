@@ -87,7 +87,7 @@ for iSessions = 1 : length(cSessions)
     %TODO: 
     
     %folder exists already check for non-archieved files
-    tapeFolder = strrep(targFolder, 'BpodBehavior', 'RAWDATA\BpodBehavior');
+    tapeFolder = strrep(targFolder, 'BpodBehavior', 'TAPE_TRANSFER\BpodBehavior');
     tapeFiles = dir(tapeFolder);
     tapeFiles = tapeFiles(3:end);
     tapeFiles = strrep({tapeFiles.name}, '.p5c', ''); %archieved files
