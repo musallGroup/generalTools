@@ -84,6 +84,7 @@ for iSessions = 1 : length(cSessions)
     cFiles = [cFiles; dir([cFolder filesep '*.mp4'])];
     cFiles = [cFiles; dir([cFolder filesep '*.mkv'])];
     cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
+    %TODO: 
     
     %folder exists already check for non-archieved files
     tapeFolder = strrep(targFolder, 'BpodBehavior', 'RAWDATA\BpodBehavior');
