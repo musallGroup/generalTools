@@ -143,6 +143,9 @@ DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 
+# Conservative Windows MAX_PATH guard (classic limit is 260; keep buffer for internal handling)
+MAX_SAFE_PATH_CHARS = 240
+
 
 # ----------------------------
 # Path mapping
@@ -578,6 +581,15 @@ def transfer_tree(
                     continue
 
                 dst_file = out_root / fname
+                
+                # --- PATH LENGTH GUARD (warn + skip) ---
+                # Classic Windows APIs can fail beyond ~260 characters. We warn early and skip to avoid hard errors.
+                dst_str = str(dst_file)
+                if len(dst_str) > MAX_SAFE_PATH_CHARS:
+                    logf(f"[PATH-ERROR] Destination path too long ({len(dst_str)} chars > {MAX_SAFE_PATH_CHARS}). Skipping: {dst_str}")
+                    errors += 1
+                    continue
+    
                 ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
 
                 src_size, src_mtime = safe_stat_size_mtime(src_file)
