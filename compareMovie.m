@@ -25,7 +25,7 @@ function varargout = compareMovie(varargin)
 % leave a comment on FEX
 %
 % compareMovie was created, using GUIDE in Matlab2014b. 
-% sm 5/8/2016
+% Simon Musall 5/8/2016
 
 %% Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -498,8 +498,23 @@ if size(handles.UserData.Frames{handles.movieSelect.Value},3) > 1
     
     end
     
-    if handles.showTraces.Value
-        handles.UserData.singleTraces{end+1} = plot(selData','linewidth',1,'color',ones(1,3)*0.7, 'parent', handles.FrameBuffer);
+    if handles.showTraces.Value    
+        % check if traces shold be colored instead of gray.
+        if ~handles.colorTraces.Value
+            handles.UserData.singleTraces{end+1} = plot(selData','linewidth',1,'color',ones(1,3)*0.7, 'parent', handles.FrameBuffer);
+        else
+            nTraces = size(selData, 1);
+            cmap = parula(nTraces);
+            h = gobjects(nTraces,1);
+            for iT = 1:nTraces
+                h(iT) = plot(selData(iT,:), ...
+                    'LineWidth', 3, ...
+                    'Color', cmap(iT,:), ...
+                    'Parent', handles.FrameBuffer);
+                hold(handles.FrameBuffer, 'on');
+            end
+            handles.UserData.singleTraces{end+1} = h;
+        end
     else
         handles.UserData.singleTraces{end+1} = plot(selData','linewidth',1,'color',ones(1,3)*0.7, 'parent', handles.FrameBuffer, 'visible', 'off');
     end
@@ -527,18 +542,25 @@ if size(handles.UserData.Frames{handles.movieSelect.Value},3) > 1
     drawnow; handles.UserData.frameInd.YData = handles.FrameBuffer.YLim;
     guidata(hObject, handles);
     
+    % check for selected movie
     xRange = [];
     for iTraces = 1 : length(handles.UserData.singleTraces)
         for iLines = 1 : length(handles.UserData.singleTraces{iTraces})
             if iLines == handles.movieSelect.Value
                 handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 3;
-                if ~handles.showError.Value
+                if ~handles.showError.Value && ~handles.colorTraces.Value
                     handles.UserData.singleTraces{iTraces}(iLines).Color = handles.UserData.meanTrace{iTraces}.Color;
+                elseif ~handles.showError.Value && handles.colorTraces.Value
+                    handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 5; %dont change color but increase size to make more notable
                 else
                     handles.UserData.singleTraces{iTraces}(iLines).Color = [0.7 0.7 0.7];
                 end
             else
-                handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 1;
+                if handles.colorTraces.Value
+                    handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 3;
+                else
+                    handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 1;
+                end
             end
             temp = [min(handles.UserData.singleTraces{iTraces}(iLines).XData) max(handles.UserData.singleTraces{iTraces}(iLines).XData)];
             if isempty(xRange); xRange = temp; end
@@ -1831,6 +1853,7 @@ patches = findall(handles.FrameBuffer.Children,'Type','Patch');
 for iPatch = 1 : size(patches,1)
     if handles.showError.Value
         patches(iPatch).FaceAlpha = 0.5;
+        uistack(patches(iPatch), 'top');
     else
         patches(iPatch).FaceAlpha = 0;
     end
@@ -1838,6 +1861,7 @@ end
 for iLines = 1:length(handles.UserData.meanTrace)
     if handles.showError.Value
         handles.UserData.meanTrace{iLines}.Visible = 'on';
+        uistack(handles.UserData.meanTrace{iLines}, 'top');
     else
         handles.UserData.meanTrace{iLines}.Visible = 'off';
     end
@@ -1915,18 +1939,32 @@ data = ApplyFilter2(squeeze(handles.UserData.Frames{handles.movieSelect.Value}(:
 drawImage(handles,handles.FrameImage,handles.FrameSlider);
 
 for iTraces = 1 : length(handles.UserData.singleTraces)
+    cmap = parula(size(handles.UserData.singleTraces{iTraces},1));
+
     for iLines = 1 : length(handles.UserData.singleTraces{iTraces})
-        handles.UserData.singleTraces{iTraces}(iLines).Color = [0.7 0.7 0.7];
-        handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 1;
-        if iLines == handles.movieSelect.Value
+        uistack(handles.UserData.singleTraces{iTraces}(iLines), 'top'); %this is to keep the regular line order
+        if handles.colorTraces.Value
+            handles.UserData.singleTraces{iTraces}(iLines).Color = cmap(iLines,:);
             handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 3;
-            if ~handles.showError.Value
+        else
+            handles.UserData.singleTraces{iTraces}(iLines).Color = [0.7 0.7 0.7];
+            handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 1;
+        end
+        if iLines == handles.movieSelect.Value
+            if handles.colorTraces.Value
+                handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 5;
+            else
+                handles.UserData.singleTraces{iTraces}(iLines).LineWidth = 3;
+            end
+            if ~handles.showError.Value && ~handles.colorTraces.Value
                 handles.UserData.singleTraces{iTraces}(iLines).Color = handles.UserData.meanTrace{iTraces}.Color;
             end
         end
     end
+    if handles.movieSelect.Value <= size(handles.UserData.singleTraces{iTraces},1)
+        uistack(handles.UserData.singleTraces{iTraces}(handles.movieSelect.Value), 'top'); %this is to keep the regular line order
+    end
 end
-
 
 % --- Executes during object creation, after setting all properties.
 function movieSelect_CreateFcn(hObject, eventdata, handles)
@@ -2093,3 +2131,13 @@ function horInds_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+
+% --- Executes on button press in colorTraces.
+function colorTraces_Callback(hObject, eventdata, handles)
+% hObject    handle to colorTraces (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of colorTraces
+movieSelect_Callback(hObject, eventdata, handles); drawnow;
