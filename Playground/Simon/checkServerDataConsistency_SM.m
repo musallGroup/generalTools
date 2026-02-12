@@ -100,10 +100,12 @@ for iSessions = 1 : length(cSessions)
         if ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) %only do this if file is not on tape already
             % check if file is broken, incomplete or missing
             fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, 1000);
+        else
+            fileIncomplete = compareFileHeadAndTail(sourceFile, fullfile(tapeFolder, cFiles(iFiles).name), 1000);
         end
 
         % check if file needs to be copied or is on tape already
-        if (~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape)) || fileIncomplete
+        if (~exist(targFile, 'file') && ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) || fileIncomplete)
             %             copyfile(sourceFile, targFile); %make sure there is a copy on the server
             %             fprintf('Copied local file %s to server\n', sourceFile);
 
