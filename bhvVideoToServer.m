@@ -87,7 +87,7 @@ for iSessions = 1 : length(cSessions)
     cFiles = [cFiles; dir([cFolder filesep '*uint16.dat'])];
     
     %folder exists already check for non-archieved files
-    tapeFolder = strrep(targFolder, 'BpodBehavior', 'RAWDATA\BpodBehavior');
+    tapeFolder = strrep(targFolder, 'BpodBehavior', 'TAPE_TRANSFER\BpodBehavior');
     tapeFiles = dir(tapeFolder);
     tapeFiles = tapeFiles(3:end);
     tapeFiles = strrep({tapeFiles.name}, '.p5c', ''); %archieved files
@@ -106,6 +106,9 @@ for iSessions = 1 : length(cSessions)
         if ~(any(strcmpi(tapeFiles, cFiles(iFiles).name)) && checkTape) %only do this if file is not on tape already
             % check if file is broken, incomplete or missing
             fileIncomplete = compareFileHeadAndTail(sourceFile, targFile, 1000);
+        else
+            tapeFile = fullfile(tapeFolder, cFiles(iFiles).name);
+            fileIncomplete = compareFileHeadAndTail(sourceFile, tapeFile, 1000);
         end
         
         % check if local file can be deleted

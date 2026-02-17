@@ -29,6 +29,10 @@ if ~ismember(fType,{'box' 'gauss' 'exp' 'invExp', 'half-gauss'})
     error('Unknown filter type. Use "box", "gauss", "exp", , " or "invExp" for fType')
 end
 
+if isvector(dataIn)
+    dataIn = dataIn(:); %make sure input is a column vector
+end
+
 dSize = size(dataIn);
 if dim > length(dSize)
     error('Dimension to be smoothed is above the dimensionality of the input data.');
