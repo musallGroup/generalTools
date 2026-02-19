@@ -35,7 +35,11 @@ for k = 1:numel(files)
     T = readtable(fp, opts);
 
     % --- Build datetime from Date (string 'yyyy/MM/dd') and Time (duration or text)
-    d = datetime(T.Date, 'InputFormat','yyyy/MM/dd');  % <� your format
+    try
+        d = datetime(T.Date, 'InputFormat','yyyy/MM/dd');  % <� your format
+    catch
+        d = datetime(T.Date, 'InputFormat','MM/d/yyyy');  % <� your format
+    end
 
     if isduration(T.Time)
         t = T.Time;
