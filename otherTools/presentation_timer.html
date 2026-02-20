@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Presentation Timer</title>
+  <style>
+    :root{
+      --bg: #0b0f14;
+      --fg: #e8eef7;
+      --muted: #9fb0c3;
+
+	  --accent: #38bdf8;   /* cyan – running */
+	  --warn:   #facc15;   /* yellow – matches digits */
+	  --danger: #ef4444;   /* red – time up */
+	  --ringTrack: rgba(255,255,255,.12);
+  
+      --ringGlow:  rgba(232,238,247,.10);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    .wrap {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      width: min(980px, 100%);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 20px;
+      padding: 26px;
+      background: rgba(255,255,255,.03);
+      box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .top {
+      display: flex;
+      gap: 16px;
+      align-items: end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+
+    /* Auto-hide controls while running */
+    .card.running .top {
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+    }
+    .card.show-controls .top {
+      opacity: 1 !important;
+      transform: none !important;
+      pointer-events: auto !important;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .inputs {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    input[type="number"], input[type="text"]{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.25);
+      color: var(--fg);
+      font-size: 16px;
+      outline: none;
+    }
+
+    input[type="number"]{ width: 140px; }
+    input[type="text"]{ width: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .chk {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      color: var(--muted);
+      user-select: none;
+    }
+    .chk input { transform: scale(1.1); }
+
+    .btns {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+
+    button {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: var(--fg);
+      font-size: 15px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover { background: rgba(255,255,255,.10); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* Timer display */
+    .clock {
+      margin-top: 6px;
+      display: grid;
+      place-items: center;
+      padding: 22px 12px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: radial-gradient(1000px 420px at 50% 0%, rgba(52,211,153,.18), transparent 60%),
+                  rgba(0,0,0,.22);
+      position: relative;
+    }
+
+    .ring {
+      width: min(800px, 92vw);
+      aspect-ratio: 1 / 1;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+	svg {
+	  width: 100%;
+	  height: 100%;
+	  transform: rotate(-270deg) scaleX(-1);
+	  filter: drop-shadow(0 0 14px var(--ringGlow));
+	}
+
+    .digits {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(76px, 12vw, 180px);
+      line-height: 1;
+      color: #fde047;
+      text-shadow: 0 0 22px rgba(232,238,247,.14);
+    }
+
+    .sub {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.25);
+      box-shadow: 0 0 0 0 rgba(52,211,153,.0);
+      transition: background .2s ease;
+    }
+
+    .state-running .dot {
+      background: var(--accent);
+      box-shadow: 0 0 18px rgba(52,211,153,.35);
+    }
+    .state-warning .dot {
+      background: var(--warn);
+      box-shadow: 0 0 18px rgba(245,158,11,.35);
+    }
+    .state-done .dot {
+      background: var(--danger);
+      box-shadow: 0 0 18px rgba(239,68,68,.35);
+    }
+
+    /* Fun warning pulse */
+    .pulse {
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    body.warning {
+      background: radial-gradient(900px 520px at 50% 0%, rgba(245,158,11,.20), transparent 55%), var(--bg);
+    }
+    body.done {
+      background: radial-gradient(900px 520px at 50% 0%, rgba(239,68,68,.18), transparent 55%), var(--bg);
+    }
+
+    .hint {
+      margin-top: 12px;
+      color: rgba(159,176,195,.85);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      padding: 2px 6px;
+      border-radius: 7px;
+      color: var(--fg);
+    }
+
+    .smallnote {
+      color: rgba(159,176,195,.75);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card state-ready" id="card">
+      <div class="top" id="controls">
+        <div class="inputs">
+          <div>
+            <label for="minutes">Minutes</label>
+            <input id="minutes" type="number" min="0" step="0.5" value="10" />
+            <div class="smallnote">Editable when paused/reset.</div>
+          </div>
+
+          <div>
+            <label for="warnAt">Warning at (MM:SS)</label>
+            <input id="warnAt" type="text" value="01:00" inputmode="numeric" />
+            <div class="smallnote">Example: 00:30, 02:00</div>
+          </div>
+
+          <label class="chk" title="Plays a short beep at warning time and at 0:00 (requires interaction).">
+            <input id="sound" type="checkbox" checked />
+            Sound alerts
+          </label>
+        </div>
+
+        <div class="btns">
+          <button id="start">Start</button>
+          <button id="pause" disabled>Pause</button>
+          <button id="reset">Reset</button>
+          <button id="fs">Fullscreen</button>
+        </div>
+      </div>
+
+      <div class="clock" id="clock">
+        <div class="ring">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <!-- Track -->
+            <circle cx="50" cy="50" r="42"
+                    fill="none"
+                    stroke="var(--ringTrack)"
+                    stroke-width="7"
+                    stroke-linecap="round" />
+            <!-- Progress -->
+            <circle id="progressCircle" cx="50" cy="50" r="42"
+                    fill="none"
+                    stroke="var(--accent)"
+                    stroke-width="7"
+                    stroke-linecap="round"
+                    stroke-dasharray="263.89"
+                    stroke-dashoffset="0" />
+          </svg>
+
+          <div class="digits" id="digits">10:00</div>
+        </div>
+
+        <div class="sub">
+          <span class="dot" id="dot"></span>
+          <span id="statusText">Ready</span>
+        </div>
+      </div>
+
+      <div class="hint">
+        Shortcuts: <span class="kbd">Space</span> start/pause,
+        <span class="kbd">R</span> reset,
+        <span class="kbd">F</span> fullscreen
+        — while running, move mouse to show controls.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const minutesEl = document.getElementById("minutes");
+    const warnAtEl  = document.getElementById("warnAt");
+    const soundEl   = document.getElementById("sound");
+
+    const startBtn  = document.getElementById("start");
+    const pauseBtn  = document.getElementById("pause");
+    const resetBtn  = document.getElementById("reset");
+    const fsBtn     = document.getElementById("fs");
+
+    const digitsEl  = document.getElementById("digits");
+    const statusEl  = document.getElementById("statusText");
+    const cardEl    = document.getElementById("card");
+    const clockEl   = document.getElementById("clock");
+    const controlsEl= document.getElementById("controls");
+
+    const progCircle = document.getElementById("progressCircle");
+    const R = 42;
+    const CIRC = 2 * Math.PI * R;
+
+    progCircle.style.strokeDasharray = String(CIRC);
+
+    let interval = null;
+    let remainingMs = 0;
+    let totalMs = 0;
+    let running = false;
+    let warned = false;
+
+    let hideControlsTimer = null;
+
+    function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+    function formatTime(ms){
+      ms = Math.max(0, ms);
+      const totalSeconds = Math.ceil(ms / 1000);
+      const m = Math.floor(totalSeconds / 60);
+      const s = totalSeconds % 60;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+    function parseMMSS(str){
+      // Accept "M:SS", "MM:SS", "SS" (treated as seconds), spaces ignored
+      const s = String(str || "").trim();
+      if (!s) return 60;
+
+      if (s.includes(":")){
+        const [mPart, sPartRaw] = s.split(":");
+        const m = Number(mPart);
+        const sec = Number((sPartRaw ?? "0").slice(0,2));
+        if (!isFinite(m) || !isFinite(sec)) return 60;
+        return clamp(Math.round(m * 60 + sec), 0, 60*60*24);
+      } else {
+        const sec = Number(s);
+        if (!isFinite(sec)) return 60;
+        return clamp(Math.round(sec), 0, 60*60*24);
+      }
+    }
+
+    function setProgress(){
+      const frac = (totalMs > 0) ? (remainingMs / totalMs) : 0;
+      const offset = CIRC * (1 - clamp(frac, 0, 1));
+      progCircle.style.strokeDashoffset = String(offset);
+    }
+
+    function setRingColor(colorCssVar){
+      progCircle.style.stroke = `var(${colorCssVar})`;
+    }
+
+    // WebAudio beep
+	function beep(freq=880, durationMs=180){
+	  if (!soundEl.checked) return;
+
+	  try {
+		const AudioCtx = window.AudioContext || window.webkitAudioContext;
+		const ctx = new AudioCtx();
+		const o = ctx.createOscillator();
+		const g = ctx.createGain();
+
+		o.type = "square";          // brighter than sine
+		o.frequency.value = freq;
+
+		g.gain.value = 0.0001;
+		o.connect(g);
+		g.connect(ctx.destination);
+
+		const now = ctx.currentTime;
+		g.gain.exponentialRampToValueAtTime(0.25, now + 0.01);      // fast attack
+		g.gain.exponentialRampToValueAtTime(0.0001, now + durationMs/1000);
+
+		o.start(now);
+		o.stop(now + durationMs/1000 + 0.02);
+		o.onended = () => ctx.close();
+	  } catch {}
+	}
+	
+	function makeDistortionCurve(amount = 30) {
+	  // Common gentle waveshaper curve. amount ~ 10..60
+	  const n = 44100;
+	  const curve = new Float32Array(n);
+	  const deg = Math.PI / 180;
+	  for (let i = 0; i < n; i++) {
+		const x = (i * 2) / n - 1;
+		curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+	  }
+	  return curve;
+	}
+
+	function gameShowBeepPunchy({ volume = 0.9 } = {}) {
+	  if (!soundEl.checked) return;
+
+	  try {
+		const AudioCtx = window.AudioContext || window.webkitAudioContext;
+		const ctx = new AudioCtx();
+		const now = ctx.currentTime;
+
+		// Master gain (overall loudness)
+		const master = ctx.createGain();
+		master.gain.value = Math.max(0.001, Math.min(volume, 1.0));
+		master.connect(ctx.destination);
+
+		// Light distortion for "bite"
+		const shaper = ctx.createWaveShaper();
+		shaper.curve = makeDistortionCurve(35);
+		shaper.oversample = "4x";
+		shaper.connect(master);
+
+		// Optional: tiny compression-like effect via gain staging (simple)
+		const pre = ctx.createGain();
+		pre.gain.value = 0.9;
+		pre.connect(shaper);
+
+		// ---- Tone 1: rising sweep ----
+		const o1 = ctx.createOscillator();
+		const g1 = ctx.createGain();
+
+		o1.type = "square";
+		o1.frequency.setValueAtTime(650, now);
+		o1.frequency.exponentialRampToValueAtTime(1550, now + 0.12);
+
+		g1.gain.setValueAtTime(0.0001, now);
+		g1.gain.exponentialRampToValueAtTime(0.95, now + 0.008);  // punchy attack
+		g1.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+		o1.connect(g1);
+		g1.connect(pre);
+
+		o1.start(now);
+		o1.stop(now + 0.16);
+
+		// ---- Tone 2: accent hit ----
+		const o2 = ctx.createOscillator();
+		const g2 = ctx.createGain();
+
+		o2.type = "square";
+		o2.frequency.setValueAtTime(1850, now + 0.18);
+
+		const t2 = now + 0.18;
+		g2.gain.setValueAtTime(0.0001, t2);
+		g2.gain.exponentialRampToValueAtTime(1.0, t2 + 0.005);
+		g2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.085);
+
+		o2.connect(g2);
+		g2.connect(pre);
+
+		o2.start(t2);
+		o2.stop(t2 + 0.11);
+
+		// Close audio context after sound finishes
+		setTimeout(() => ctx.close(), 420);
+
+	  } catch {}
+	}
+
+	function gameShowBeepRepeat({
+	  repeats = 3,
+	  intervalMs = 550,
+	  volume = 0.9
+	} = {}) {
+	  // Repeats a punchy sound multiple times
+	  let n = 0;
+	  const fire = () => {
+		gameShowBeepPunchy({ volume });
+		n++;
+		if (n < repeats) setTimeout(fire, intervalMs);
+	  };
+	  fire();
+	}
+
+
+
+
+    function setState(state){
+      cardEl.classList.remove("state-running","state-warning","state-done","state-ready");
+      document.body.classList.remove("warning","done");
+      clockEl.classList.remove("pulse");
+
+      if (state === "running"){
+        cardEl.classList.add("state-running");
+        statusEl.textContent = "Running";
+        setRingColor("--accent");
+      } else if (state === "warning"){
+        cardEl.classList.add("state-warning");
+        document.body.classList.add("warning");
+        clockEl.classList.add("pulse");
+        statusEl.textContent = "Warning";
+        setRingColor("--warn");
+      } else if (state === "done"){
+        cardEl.classList.add("state-done");
+        document.body.classList.add("done");
+        statusEl.textContent = "Time up";
+        setRingColor("--danger");
+      } else {
+        cardEl.classList.add("state-ready");
+        statusEl.textContent = "Ready";
+        setRingColor("--accent");
+      }
+    }
+
+    function setControlsLock(isLocked){
+      // Make minutes editable when NOT running (your request).
+      minutesEl.disabled = isLocked;
+      warnAtEl.disabled  = isLocked;
+    }
+
+    function loadFromInputs(){
+      const mins = Number(minutesEl.value);
+      const safeMins = isFinite(mins) ? clamp(mins, 0, 999) : 0;
+
+      totalMs = Math.round(safeMins * 60 * 1000);
+      remainingMs = totalMs;
+
+      warned = false;
+      digitsEl.textContent = formatTime(remainingMs);
+      setProgress();
+      setState("ready");
+    }
+
+    function maybeAutoHideControls(){
+      // Hide controls a moment after starting, but show again on mouse move.
+      cardEl.classList.add("running");
+      cardEl.classList.remove("show-controls");
+
+      clearTimeout(hideControlsTimer);
+      hideControlsTimer = setTimeout(() => {
+        cardEl.classList.remove("show-controls");
+      }, 1200);
+    }
+
+    function showControlsTemporarily(){
+      if (!running) return;
+      cardEl.classList.add("show-controls");
+      clearTimeout(hideControlsTimer);
+      hideControlsTimer = setTimeout(() => {
+        cardEl.classList.remove("show-controls");
+      }, 1400);
+    }
+
+    function tick(){
+      remainingMs -= 200;
+      if (remainingMs < 0) remainingMs = 0;
+
+      digitsEl.textContent = formatTime(remainingMs);
+      setProgress();
+
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      const warnSec = parseMMSS(warnAtEl.value);
+
+      if (!warned && warnSec > 0 && remainingSec <= warnSec && remainingSec > 0){
+        warned = true;
+        setState("warning");
+        <!-- beep(740, 180); -->
+		gameShowBeepRepeat({ repeats: 2, intervalMs: 520, volume: 0.95 });
+
+      }
+
+      if (remainingMs <= 0){
+        stopTimer(true);
+      }
+    }
+
+    function startTimer(){
+      if (running) return;
+
+      // Ensure we have a valid total; if currently at 0, reload.
+      if (totalMs <= 0 || remainingMs <= 0){
+        loadFromInputs();
+      }
+
+      running = true;
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+
+      setControlsLock(true);
+      maybeAutoHideControls();
+
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      const warnSec = parseMMSS(warnAtEl.value);
+
+      if (warnSec > 0 && remainingSec <= warnSec && remainingSec > 0){
+        warned = true;
+        setState("warning");
+      } else {
+        setState("running");
+      }
+
+      interval = setInterval(tick, 200);
+    }
+
+    function pauseTimer(){
+      if (!running) return;
+      running = false;
+
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+
+      clearInterval(interval);
+      interval = null;
+
+      cardEl.classList.remove("running");
+      cardEl.classList.add("show-controls");
+
+      setControlsLock(false);
+
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      const warnSec = parseMMSS(warnAtEl.value);
+
+      if (remainingSec <= 0) setState("done");
+      else if (warnSec > 0 && remainingSec <= warnSec) setState("warning");
+      else {
+        setState("ready");
+        statusEl.textContent = "Paused";
+      }
+    }
+
+    function stopTimer(timeUp=false){
+      running = false;
+      clearInterval(interval);
+      interval = null;
+
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+
+      cardEl.classList.remove("running");
+      cardEl.classList.add("show-controls");
+
+      setControlsLock(false);
+
+      remainingMs = 0;
+      digitsEl.textContent = "00:00";
+      setProgress();
+      setState("done");
+
+      if (timeUp){
+        beep(520, 220);
+        setTimeout(() => beep(520, 220), 260);
+        setTimeout(() => beep(520, 220), 520);
+      }
+    }
+
+    function resetTimer(){
+      pauseTimer();
+      loadFromInputs();
+    }
+
+    async function toggleFullscreen(){
+      try {
+        if (!document.fullscreenElement){
+          await document.documentElement.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (e) {}
+    }
+
+    // Wire up events
+    startBtn.addEventListener("click", startTimer);
+    pauseBtn.addEventListener("click", pauseTimer);
+    resetBtn.addEventListener("click", resetTimer);
+    fsBtn.addEventListener("click", toggleFullscreen);
+
+    minutesEl.addEventListener("input", () => { if (!running) loadFromInputs(); });
+    warnAtEl.addEventListener("input", () => { /* parsed on tick/start; no need to reload */ });
+
+    // If you click inside the timer area while running, show controls briefly.
+    clockEl.addEventListener("mousemove", showControlsTemporarily);
+    window.addEventListener("mousemove", showControlsTemporarily);
+
+    // Keyboard shortcuts
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space"){
+        e.preventDefault();
+        running ? pauseTimer() : startTimer();
+      } else if (e.key.toLowerCase() === "r"){
+        resetTimer();
+      } else if (e.key.toLowerCase() === "f"){
+        toggleFullscreen();
+      }
+    });
+
+    // Init
+    loadFromInputs();
+  </script>
+</body>
+</html>
