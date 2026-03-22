@@ -82,6 +82,13 @@ If the target's TAPE_TRANSFER root folder contains:
 then the script will FORCE DRY RUN mode (no copying/moving/deleting), and it will print/log a message
 that transfers are blocked due to the lock.
 
+Conversely, when this script runs in LIVE mode, it creates:
+    TAPE_COPY_IN_PROGRESS.lock
+in the TAPE_TRANSFER root before any file operations begin. The lock file contains the same header information
+as the transfer log (user, start time, source, target, mode) to help IT see who started a staging run
+and when. The lock is removed automatically at the end; if the script is interrupted, the lock may remain
+and should only be removed after confirming the staging is complete.
+
 
 Logging (default: enabled)
 --------------------------
@@ -142,6 +149,7 @@ DEFAULT_SAMPLE_BLOCKS = 16
 DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
+COPY_LOCK_FILENAME = "TAPE_COPY_IN_PROGRESS.lock"
 
 # Conservative Windows MAX_PATH guard (classic limit is 260; keep buffer for internal handling)
 MAX_SAFE_PATH_CHARS = 240
@@ -174,6 +182,67 @@ def tape_transfer_root(p: Path) -> Path:
         if part.lower() == "tape_transfer":
             return Path(str(PureWindowsPath(*parts[: i + 1])))
     return p
+
+
+# ----------------------------
+# Lock helpers (top-level)
+# ----------------------------
+def write_lock_file(
+    lock_path: Path,
+    *,
+    header_text: str,
+    dry_run: bool,
+    logf=None,
+) -> None:
+    """
+    Create a lock file indicating that a copy/staging process is in progress.
+
+    The lock file contains the same header information as the transfer log
+    (user, start time, source, target, mode), to aid monitoring and debugging.
+    """
+    if dry_run:
+        if logf:
+            logf(f"[LOCK] DRY RUN: would create lock file: {lock_path}")
+        else:
+            print(f"[LOCK] DRY RUN: would create lock file: {lock_path}")
+        return
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with open(lock_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(header_text.rstrip() + "\n")
+        if logf:
+            logf(f"[LOCK] Created: {lock_path}")
+        else:
+            print(f"[LOCK] Created: {lock_path}")
+    except Exception as e:
+        raise OSError(f"Failed to create lock file {lock_path}: {e}")
+
+
+def remove_lock_file(lock_path: Path, *, dry_run: bool, logf=None) -> None:
+    """
+    Remove our 'copy in progress' lock file (best effort).
+    """
+    if dry_run:
+        if logf:
+            logf(f"[LOCK] DRY RUN: would remove lock file: {lock_path}")
+            print(f"[LOCK] DRY RUN: would remove lock file: {lock_path}")
+        return
+
+    try:
+        if lock_path.exists():
+            lock_path.unlink()
+            if logf:
+                logf(f"[LOCK] Removed: {lock_path}")
+            else:
+                print(f"[LOCK] Removed: {lock_path}")
+    except Exception as e:
+        # Best-effort cleanup: do not crash at shutdown
+        if logf:
+            logf(f"[LOCK][WARN] Could not remove lock file: {lock_path} ({e})")
+        else:
+            print(f"[LOCK][WARN] Could not remove lock file: {lock_path} ({e})")
 
 
 # ----------------------------
@@ -345,6 +414,7 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
 
     If ignore_manifest is True, returns an empty index.
     """
+    
     if ignore_manifest:
         logf("[MANIFEST] Ignoring manifest (--ignore-manifest).")
         return {}
@@ -371,7 +441,6 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
                     size = rec.get("size")
                     mtime = rec.get("mtime")
                     if isinstance(rel, str) and isinstance(size, int) and isinstance(mtime, (int, float)):
-                        # Keep latest for that relpath
                         index[rel] = (int(size), float(mtime))
                 except Exception:
                     bad_lines += 1
@@ -390,9 +459,6 @@ def manifest_has_entry(
     mtime: float,
     mtime_tolerance_s: float = 2.0,
 ) -> bool:
-    """
-    Return True if manifest index contains relpath with matching size and mtime (within tolerance).
-    """
     if relpath_posix not in index:
         return False
     s0, t0 = index[relpath_posix]
@@ -406,9 +472,6 @@ def append_manifest_record(
     dry_run: bool,
     logf,
 ) -> None:
-    """
-    Append one JSON record as a line to manifest.ndjson (unless dry_run).
-    """
     mdir = manifest_dir(source_root)
     mpath = manifest_path(source_root)
 
@@ -422,7 +485,6 @@ def append_manifest_record(
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         logf(f"[MANIFEST] Appended: {record.get('action')} {record.get('relpath')}")
     except Exception as e:
-        # We log, but do not stop the transfer; manifest is a robustness aid.
         logf(f"[MANIFEST][ERROR] Failed to append manifest record ({e})")
 
 
@@ -481,10 +543,6 @@ def transfer_tree(
     user_name: str,
     ignore_manifest: bool,
 ) -> Tuple[int, int, int, int, int, Path, Path]:
-    """
-    Returns:
-      (copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path)
-    """
     max_bytes = int(max_size_gb * 1024**3)
     block_size = sample_block_kb * 1024
 
@@ -510,17 +568,32 @@ def transfer_tree(
     if dry_run and tgt_log_handle is None:
         logf(f"[WARN] Dry-run: target folder does not exist, so target log was not written: {tgt_log_path}")
 
+    # Determine copy-lock location (TAPE_TRANSFER root) once
+    copy_lock_path = tape_transfer_root(target_dir) / COPY_LOCK_FILENAME
+
     try:
         total_mb = (sample_blocks * sample_block_kb) / 1024.0
 
-        # Log header / configuration
-        logf(f"[INFO] Start: {datetime.now().isoformat(timespec='seconds')}")
-        logf(f"[INFO] User: {user_name}")
-        logf(f"[INFO] Source: {source_dir}")
-        logf(f"[INFO] Target: {target_dir}")
-        logf(f"[INFO] Mode: {'DRY RUN' if dry_run else 'LIVE'} | Overwrite: {overwrite}")
-        logf(f"[INFO] maxSizeGB: {max_size_gb}")
-        logf(f"[INFO] Partial-hash sampling: {sample_blocks} blocks x {sample_block_kb} KB (~{total_mb:.2f} MB/file)")
+        # Header / configuration (build ONCE, use for log + lock)
+        start_ts = datetime.now().isoformat(timespec="seconds")
+        header_lines = [
+            f"[INFO] Start: {start_ts}",
+            f"[INFO] User: {user_name}",
+            f"[INFO] Source: {source_dir}",
+            f"[INFO] Target: {target_dir}",
+            f"[INFO] Mode: {'DRY RUN' if dry_run else 'LIVE'} | Overwrite: {overwrite}",
+            f"[INFO] maxSizeGB: {max_size_gb}",
+            f"[INFO] Partial-hash sampling: {sample_blocks} blocks x {sample_block_kb} KB (~{total_mb:.2f} MB/file)",
+        ]
+        header_text = "\n".join(header_lines)
+
+        # Write header to logs
+        for line in header_lines:
+            logf(line)
+
+        # Create our "copy in progress" lock in LIVE mode (not in dry-run, not if blocked)
+        if (not dry_run) and (not forced_by_lock):
+            write_lock_file(copy_lock_path, header_text=header_text, dry_run=False, logf=logf)
 
         if move_exts:
             logf(f"[INFO] move-ext provided: {sorted(move_exts)}")
@@ -549,10 +622,8 @@ def transfer_tree(
         logf("[INFO] MOVE-category + dst exists (no --overwrite): delete source ONLY if size + partial-hash match")
         logf("-" * 110)
 
-        # Load manifest index (for skip decisions)
         manifest_index = load_manifest_index(source_dir, logf=logf, ignore_manifest=ignore_manifest)
 
-        # In live mode, ensure target root exists before walking
         if not dry_run:
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -566,13 +637,11 @@ def transfer_tree(
                 ensure_dir(out_root / d, dry_run=dry_run, logf=logf)
 
             for fname in files:
-                # Skip logs and manifest folder itself to avoid re-transferring control files
                 if fname.startswith("transferLog_") and fname.endswith(".log"):
                     continue
 
                 src_file = root_path / fname
 
-                # Never transfer the manifest directory itself
                 if ".tape_transfer" in src_file.parts:
                     continue
 
@@ -581,15 +650,13 @@ def transfer_tree(
                     continue
 
                 dst_file = out_root / fname
-                
-                # --- PATH LENGTH GUARD (warn + skip) ---
-                # Classic Windows APIs can fail beyond ~260 characters. We warn early and skip to avoid hard errors.
+
                 dst_str = str(dst_file)
                 if len(dst_str) > MAX_SAFE_PATH_CHARS:
                     logf(f"[PATH-ERROR] Destination path too long ({len(dst_str)} chars > {MAX_SAFE_PATH_CHARS}). Skipping: {dst_str}")
                     errors += 1
                     continue
-    
+
                 ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
 
                 src_size, src_mtime = safe_stat_size_mtime(src_file)
@@ -600,7 +667,6 @@ def transfer_tree(
 
                 rel_path_posix = str((rel_dir / fname).as_posix())
 
-                # Decide move/copy classification under *current* rules
                 do_move = should_move(
                     src_file=src_file,
                     file_size_bytes=int(src_size),
@@ -609,9 +675,6 @@ def transfer_tree(
                     move_keywords=move_keywords,
                 )
 
-                # --- NEW: cleanup path BEFORE manifest skip ---
-                # If under current rules this file should be MOVED, but it already exists in target,
-                # then delete the source after verifying dst matches src (size + partial hash).
                 if dst_file.exists() and (not overwrite) and do_move:
                     try:
                         ok = partial_hash_match(
@@ -633,12 +696,10 @@ def transfer_tree(
                             except Exception as e:
                                 logf(f"[ERROR] Cannot delete source: {src_file} ({e})")
                                 errors += 1
-                                # If we couldn't delete, keep going (do not treat as staged)
                                 ok = False
 
                         if ok:
                             deleted_src += 1
-                            # Write a manifest record even if it already existed; it documents the cleanup event.
                             rec = {
                                 "ts": datetime.now().isoformat(timespec="seconds"),
                                 "user": user_name,
@@ -654,18 +715,14 @@ def transfer_tree(
                             manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
                             continue
                     else:
-                        # dst exists but mismatch -> do NOT delete source
                         logf(f"[SKIP] dst exists but does NOT match (kept src): {dst_file}")
                         continue
 
-                # --- Manifest-based skip (only for staging actions) ---
-                # If we already have a manifest entry for this file version, don't re-stage it.
                 if manifest_has_entry(manifest_index, rel_path_posix, int(src_size), float(src_mtime)):
                     logf(f"[SKIP-MANIFEST] Already staged/archived per manifest: {rel_path_posix}")
                     skipped_manifest += 1
                     continue
 
-                # If destination exists and overwrite is requested, delete destination and proceed.
                 if dst_file.exists() and overwrite:
                     if dry_run:
                         logf(f"[DEL ] {dst_file}")
@@ -678,7 +735,6 @@ def transfer_tree(
                             errors += 1
                             continue
 
-                # Destination does not exist (or we deleted it due to overwrite)
                 if do_move:
                     if dry_run:
                         logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
@@ -692,7 +748,6 @@ def transfer_tree(
                             continue
                     moved += 1
 
-                    # Manifest record for MOVE
                     rec = {
                         "ts": datetime.now().isoformat(timespec="seconds"),
                         "user": user_name,
@@ -719,7 +774,6 @@ def transfer_tree(
                             continue
                     copied += 1
 
-                    # Manifest record for COPY
                     rec = {
                         "ts": datetime.now().isoformat(timespec="seconds"),
                         "user": user_name,
@@ -741,6 +795,12 @@ def transfer_tree(
         return copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path
 
     finally:
+        # Always attempt to remove our copy-lock at the end (best effort)
+        try:
+            remove_lock_file(copy_lock_path, dry_run=dry_run, logf=logf)
+        except Exception:
+            pass
+
         if src_log_handle:
             src_log_handle.close()
         if tgt_log_handle:
@@ -797,15 +857,24 @@ def main() -> int:
         print(f"[ERROR] Source is not a directory: {src}")
         return 2
 
-    # LOCK CHECK (auto dry-run)
+    # LOCK CHECKS
     tape_root = tape_transfer_root(tgt)
-    lock_file = tape_root / LOCK_FILENAME
+
+    tape_process_lock = tape_root / LOCK_FILENAME
     forced_by_lock = False
-    if lock_file.exists():
+    if tape_process_lock.exists():
         forced_by_lock = True
         args.dry_run = True
-        print(f"[LOCK] Found lock file: {lock_file}")
+        print(f"[LOCK] Found lock file: {tape_process_lock}")
         print("[LOCK] TAPE_TRANSFER is currently in progress.")
+        print("[LOCK] No data will be copied/moved/deleted. Running in DRY RUN mode.\n")
+
+    copy_in_progress_lock = tape_root / COPY_LOCK_FILENAME
+    if copy_in_progress_lock.exists():
+        forced_by_lock = True
+        args.dry_run = True
+        print(f"[LOCK] Found lock file: {copy_in_progress_lock}")
+        print("[LOCK] Another staging/copy process is already running (or previously crashed).")
         print("[LOCK] No data will be copied/moved/deleted. Running in DRY RUN mode.\n")
 
     move_exts = normalize_exts(args.move_ext)
@@ -820,7 +889,7 @@ def main() -> int:
     print(f"TAPE_TRANSFER root: {tape_root}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'} | Overwrite: {args.overwrite}")
     if forced_by_lock:
-        print("NOTE: DRY RUN was forced due to TAPE_TRANSFER_IN_PROGRESS.lock")
+        print(f"NOTE: DRY RUN was forced due to presence of {LOCK_FILENAME} and/or {COPY_LOCK_FILENAME}")
     print(f"maxSize: {args.maxSize} GB")
     print(f"move-ext: {sorted(move_exts) if move_exts else '<none>'}")
     print(f"move-keyword: {move_keywords if move_keywords else '<none>'}")
@@ -841,7 +910,7 @@ def main() -> int:
         sample_blocks=args.sample_blocks,
         sample_block_kb=args.sample_block_kb,
         forced_by_lock=forced_by_lock,
-        lock_file=lock_file,
+        lock_file=tape_process_lock,
         user_name=user_name,
         ignore_manifest=args.ignore_manifest,
     )
@@ -853,7 +922,6 @@ def main() -> int:
     print(f"Target log: {tgt_log_path} (may not exist in dry-run if target folder doesn't exist)")
     print(f"Manifest: {manifest_path(src)}")
 
-    # If we were blocked by lock, return a distinct code (useful for automation)
     if forced_by_lock:
         return 3
     return 0 if errors == 0 else 1

@@ -120,7 +120,8 @@ for iSessions = 1 : length(cSessions)
                 fprintf('Removed local file %s\n', sourceFile);
             
             else
-                error('something weird happened - is something wrong with server communication, server full or broken file??');
+%                 error('something weird happened - is something wrong with server communication, server full or broken file??');
+                disp('something weird happened - is something wrong with server communication, server full or broken file??');
             end
         else
             fprintf('Keeping local file %s on local PC\n', sourceFile);
