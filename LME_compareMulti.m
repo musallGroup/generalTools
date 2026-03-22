@@ -1,5 +1,5 @@
 function [pVal_cStim, tStat_cStim, fullmodel, modelCompare, dataUsed] = ...
-    LME_compareMulti_SM(dataIn, conditionID, randomVar, modelType, transformType)
+    LME_compareMulti(dataIn, conditionID, randomVar, modelType, transformType)
 % Compare measurements across conditions using a mixed-effects model.
 %
 % INPUTS

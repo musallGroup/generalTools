@@ -6,7 +6,7 @@ function [mapImg, cRange] = imageScale(cMap, cRange, twoSided, colors)
 % usage: [mapImg, cRange] = imageScale(cMap, cRange, twoSided)
 
 if ~exist('cRange', 'var') || isempty(cRange)
-    cRange = abs(prctile(cMap(:),97.5));
+    cRange = prctile(abs(cMap(:)),97.5);
 end
 
 if ~exist('twoSided', 'var') || isempty(twoSided)
