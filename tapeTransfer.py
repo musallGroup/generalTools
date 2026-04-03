@@ -7,7 +7,7 @@ Purpose
 -------
 Stage data for tape transfer by mirroring a source directory tree into a derived target directory tree,
 with rules for where to insert "TAPE_TRANSFER" into the path. By default, the script COPIES files;
-it MOVES only large files (default threshold 10 GB) or files matching explicit "move" criteria.
+it MOVES only large files (default threshold 20 GB) or files matching explicit "move" criteria.
 
 
 Examples (PowerShell)
@@ -42,7 +42,7 @@ Transfer rules
 Default: COPY everything.
 
 MOVE a file if ANY of the following are true:
-- file size > --maxSize (GB)        [default: 10 GB]
+- file size > --maxSize (GB)        [default: 20 GB]
 - file extension matches --move-ext (e.g. .bin .dat .tif)
 - filename contains --move-keyword  (case-insensitive substring match)
 
@@ -83,11 +83,14 @@ then the script will FORCE DRY RUN mode (no copying/moving/deleting), and it wil
 that transfers are blocked due to the lock.
 
 Conversely, when this script runs in LIVE mode, it creates:
-    TAPE_COPY_IN_PROGRESS.lock
-in the TAPE_TRANSFER root before any file operations begin. The lock file contains the same header information
-as the transfer log (user, start time, source, target, mode) to help IT see who started a staging run
-and when. The lock is removed automatically at the end; if the script is interrupted, the lock may remain
-and should only be removed after confirming the staging is complete.
+    TAPE_COPY_IN_PROGRESS_YYYYMMDD_HHMMSS.lock
+in the TAPE_TRANSFER root before any file operations begin. The timestamp makes each lock file unique,
+so multiple people can run the script in parallel without their lock files interfering with each other.
+The lock file contains the same header information as the transfer log (user, start time, source, target,
+mode) to help IT see who started a staging run and when. The lock is removed automatically at the end;
+if the script is interrupted, the lock may remain and should only be removed after confirming the staging
+is complete. IT's tape process should check for any file matching TAPE_COPY_IN_PROGRESS_*.lock before
+starting, to avoid reading incomplete data.
 
 
 Logging (default: enabled)
@@ -149,7 +152,7 @@ DEFAULT_SAMPLE_BLOCKS = 16
 DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
-COPY_LOCK_FILENAME = "TAPE_COPY_IN_PROGRESS.lock"
+COPY_LOCK_PREFIX = "TAPE_COPY_IN_PROGRESS"
 
 # Conservative Windows MAX_PATH guard (classic limit is 260; keep buffer for internal handling)
 MAX_SAFE_PATH_CHARS = 240
@@ -227,6 +230,7 @@ def remove_lock_file(lock_path: Path, *, dry_run: bool, logf=None) -> None:
     if dry_run:
         if logf:
             logf(f"[LOCK] DRY RUN: would remove lock file: {lock_path}")
+        else:
             print(f"[LOCK] DRY RUN: would remove lock file: {lock_path}")
         return
 
@@ -568,8 +572,9 @@ def transfer_tree(
     if dry_run and tgt_log_handle is None:
         logf(f"[WARN] Dry-run: target folder does not exist, so target log was not written: {tgt_log_path}")
 
-    # Determine copy-lock location (TAPE_TRANSFER root) once
-    copy_lock_path = tape_transfer_root(target_dir) / COPY_LOCK_FILENAME
+    # Determine copy-lock location (TAPE_TRANSFER root) once.
+    # Timestamp suffix makes each run's lock file unique so parallel runs don't interfere.
+    copy_lock_path = tape_transfer_root(target_dir) / f"{COPY_LOCK_PREFIX}_{ts}.lock"
 
     try:
         total_mb = (sample_blocks * sample_block_kb) / 1024.0
@@ -811,8 +816,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Stage data into a derived TAPE_TRANSFER folder by copying/moving files.")
     ap.add_argument("source", help="Source folder path (Windows path or UNC path).")
 
-    ap.add_argument("--maxSize", type=float, default=10.0,
-                    help="Move files larger than this size (GB). Default: 10")
+    ap.add_argument("--maxSize", type=float, default=20.0,
+                    help="Move files larger than this size (GB). Default: 20")
 
     ap.add_argument("--move-ext", nargs="*", default=None,
                     help="File extensions to ALWAYS move (e.g. .bin .dat .tif).")
@@ -869,11 +874,12 @@ def main() -> int:
         print("[LOCK] TAPE_TRANSFER is currently in progress.")
         print("[LOCK] No data will be copied/moved/deleted. Running in DRY RUN mode.\n")
 
-    copy_in_progress_lock = tape_root / COPY_LOCK_FILENAME
-    if copy_in_progress_lock.exists():
+    existing_copy_locks = sorted(tape_root.glob(f"{COPY_LOCK_PREFIX}_*.lock")) if tape_root.exists() else []
+    if existing_copy_locks:
         forced_by_lock = True
         args.dry_run = True
-        print(f"[LOCK] Found lock file: {copy_in_progress_lock}")
+        for lf in existing_copy_locks:
+            print(f"[LOCK] Found lock file: {lf}")
         print("[LOCK] Another staging/copy process is already running (or previously crashed).")
         print("[LOCK] No data will be copied/moved/deleted. Running in DRY RUN mode.\n")
 
@@ -889,7 +895,7 @@ def main() -> int:
     print(f"TAPE_TRANSFER root: {tape_root}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'} | Overwrite: {args.overwrite}")
     if forced_by_lock:
-        print(f"NOTE: DRY RUN was forced due to presence of {LOCK_FILENAME} and/or {COPY_LOCK_FILENAME}")
+        print(f"NOTE: DRY RUN was forced due to presence of {LOCK_FILENAME} and/or {COPY_LOCK_PREFIX}_*.lock")
     print(f"maxSize: {args.maxSize} GB")
     print(f"move-ext: {sorted(move_exts) if move_exts else '<none>'}")
     print(f"move-keyword: {move_keywords if move_keywords else '<none>'}")
