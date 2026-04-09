@@ -19,7 +19,22 @@ function dataStruct = parseTifHeader(headerText)
             value = datenum(str2num(valueStr));
         elseif any(strcmp(key, {'auxTrigger0', 'auxTrigger1', 'auxTrigger2', 'auxTrigger3', 'I2CData'}))
             % For the empty arrays or cell arrays, we evaluate the string
-            value = eval(valueStr);  % '{}' or '[]' will be converted correctly
+            % Use try-catch in case the description was truncated by ScanImageTiffReader
+            try
+                value = eval(valueStr);  % '{}' or '[]' will be converted correctly
+            catch
+                % Try to recover partial data by stripping '<output truncated>' and closing the bracket
+                partialStr = regexprep(valueStr, '\s*<output truncated>\s*$', '');
+                partialStr = strtrim(partialStr);
+                if startsWith(partialStr, '[') && ~endsWith(partialStr, ']')
+                    partialStr = [partialStr ']'];
+                end
+                try
+                    value = eval(partialStr);
+                catch
+                    value = [];  % unrecoverable — treat as empty
+                end
+            end
         else
             % For numeric values, convert to double
             value = str2double(valueStr);

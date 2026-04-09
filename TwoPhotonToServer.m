@@ -1,4 +1,4 @@
-function TwoPhotonToServer(basePath, targPath, targPath2, keepLocal)
+function TwoPhotonToServer(basePath, targPath, targPath2, keepLocal, useCompress, dryRun)
 % Function to move imaging data from local PC to the server or an external 
 % HDD. Will copy all data but only delete large TIFs from the base folder.
 %
@@ -26,6 +26,18 @@ delSize = 1; %size in GB of TIF stacks that should be removed
 
 if ~exist('keepLocal' , 'var') || isempty(keepLocal)
     keepLocal = true;
+end
+
+if ~exist('useCompress' , 'var') || isempty(useCompress)
+    useCompress = false;
+end
+
+if ~exist('dryRun' , 'var') || isempty(dryRun)
+    dryRun = false;
+end
+
+if dryRun
+    disp('[DRY RUN] No files will be copied or deleted.');
 end
 
 % check if second target is given and exists
@@ -75,7 +87,50 @@ for iSessions = 1 : length(cSessions)
     cFolder = fullfile(basePath, cSessions(iSessions).name);
     fprintf('Current folder (%d/%d): %s\n', iSessions, length(cSessions), cFolder);
 
-    if ~isempty(dir([cFolder filesep '*.tif'])) % only copy if there are tif stacks in current folder
+    if ~isempty([dir([cFolder filesep '*.tif']); dir([cFolder filesep '*.7z'])]) % only copy if there are tif stacks in current folder
+        
+        if ~dryRun
+            twoP_readSItriggerFromTIF_SM(cFolder); %get trigger signals from TIF stack before moving data
+        else
+            disp('[DRY RUN] Would call twoP_readSItriggerFromTIF_SM.');
+        end
+
+        %% find large TIF files and compress
+        tifFiles = dir(fullfile(cFolder, '**', '*.tif'));
+        tifFiles = [tifFiles; dir(fullfile(cFolder, '**', '*.TIF'))];
+        tifFiles = [tifFiles; dir(fullfile(cFolder, '**', '*uint16.dat'))]; %also compress widefield data
+        tifFiles = tifFiles([tifFiles.bytes] > (1024^3 * delSize)); % only compress large files
+        
+        % try to compress TIF file
+        % this needs installed 7zip to work
+        if useCompress
+            for iFiles = 1 : length(tifFiles)
+                
+                cFile = fullfile(tifFiles(iFiles).folder, tifFiles(iFiles).name);
+                if exist(fullfile(tifFiles(iFiles).folder, 'suite2p'), 'dir')
+                    
+                    disp(['Compressing file: '  tifFiles(iFiles).name]);
+                    
+                    tic; [integrityCheck, zipOutputPath] = compressTIFwith7zip(cFile); toc;
+                    
+                    % make sure that compression was successful
+                    if integrityCheck
+                        disp('Compression succesful. Deleting original TIF file.');
+                        delete(cFile);
+                        
+                        %double-check that file was really deleted and produce error otherwise.
+                        % It happened before that it was still on the server for some reason.
+                        if exist(cFile, 'file')
+                            error('TIF file could not be deleted. Is it still open somewhere else?');
+                        end
+                    else
+                        disp('Compression failed. Check if 7z is installed in the base environment.');
+                    end
+                end
+            end
+        end
+
+        % start moving data
         for x = 1 : copyRuns
             if x == 1
                 targFolder = fullfile(newTargPath1, cSessions(iSessions).name);
@@ -83,14 +138,14 @@ for iSessions = 1 : length(cSessions)
                 targFolder = fullfile(newTargPath2, cSessions(iSessions).name);
             end
 
-            % make a full copy if target folder doesnt exist.
-            % otherwise check if folder has been archieved already for individual files
-            if exist(targFolder, 'dir') == 0
-                copyfile(cFolder, targFolder);
-            else
-                disp('Folder already exists - checking for non-archived files.')
+            % copy missing files to target folder, creating it if needed
+            if ~dryRun
+                if exist(targFolder, 'dir') == 0
+                    mkdir(targFolder);   % ***********creates a folder if missing
+                else
+                    disp('Folder already exists - checking for non-archived files.')
+                end
 
-                %folder exists already check for non-archieved files
                 sourceFiles = dir(cFolder);
                 sourceFiles = {sourceFiles.name};
                 sourceFiles = sourceFiles(3:end);
@@ -106,23 +161,28 @@ for iSessions = 1 : length(cSessions)
                         disp('done!');
                     end
                 end
+                fprintf('Copy %i complete\n', x);
+            else
+                fprintf('[DRY RUN] Would copy %s -> %s\n', cFolder, targFolder);
             end
-            fprintf('Copy %i complete\n', x);
         end
 
         %% check for large TIF stacks and delete
-        cFiles = dir([cFolder filesep '*tif']);
-%         a{iSessions} = cFiles([cFiles.bytes] > 1024^3); %potential tif stacks
-
-        if ~keepLocal
+        delFiles = dir(fullfile(cFolder, '**', '*.tif'));
+        delFiles = [delFiles; dir(fullfile(cFolder, '**', '*.7z'))];
+        delFiles = [delFiles; dir(fullfile(cFolder, '**', '*uint16.dat'))];
+        delFiles = delFiles([delFiles.bytes] > (1024^3 * delSize)); %only delete files of this minimal size
+        if ~keepLocal && ~dryRun
             disp('Removing large TIF stacks from base folder.');
-            for iFiles = 1 : length(cFiles)
-                if cFiles(iFiles).bytes > (1024^3 * delSize) %file is larger than minimal size in GB - remove
-                    delete(fullfile(cFiles(iFiles).folder,cFiles(iFiles).name));
-                    fprintf('Deleted file %s\n', cFiles(iFiles).name)
-                end
+            for iFiles = 1 : length(delFiles)
+                delete(fullfile(delFiles(iFiles).folder, delFiles(iFiles).name));
+                fprintf('Deleted file %s\n', delFiles(iFiles).name)
             end
             disp('Done.')
+        elseif ~keepLocal && dryRun
+            for iFiles = 1 : length(delFiles)
+                fprintf('[DRY RUN] Would delete %s\n', fullfile(delFiles(iFiles).folder, delFiles(iFiles).name))
+            end
         else
             disp('Keeping local raw TIF stacks.')
         end

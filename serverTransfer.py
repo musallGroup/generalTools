@@ -46,6 +46,7 @@ import json
 import os
 import random
 import shutil
+import time
 from datetime import datetime
 from pathlib import PureWindowsPath, Path
 from typing import Dict, Iterable, Optional, Tuple
@@ -54,6 +55,10 @@ from typing import Dict, Iterable, Optional, Tuple
 # Default partial-hash sampling (~1 MB total)
 DEFAULT_SAMPLE_BLOCKS = 16
 DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
+
+# Default retry behaviour for copy/move failures (e.g. transient USB bridge timeouts)
+DEFAULT_RETRIES = 3
+DEFAULT_RETRY_DELAY_S = 10
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 
@@ -321,10 +326,13 @@ def manifest_path(source_root: Path) -> Path:
     return manifest_dir(source_root) / "manifest.ndjson"
 
 
-def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[str, Tuple[int, float]]:
+def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[Tuple[str, str], Tuple[int, float]]:
     """
     Load manifest.ndjson into an index:
-      relpath_posix -> (size, mtime)
+      (relpath_posix, target_root) -> (size, mtime)
+
+    Keying on both relpath and target_root means a successful transfer to D:\
+    does not suppress the same file being transferred to E:\, and vice versa.
 
     If ignore_manifest is True, returns an empty index.
     """
@@ -337,7 +345,7 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
         logf(f"[MANIFEST] No manifest found yet: {mpath}")
         return {}
 
-    index: Dict[str, Tuple[int, float]] = {}
+    index: Dict[Tuple[str, str], Tuple[int, float]] = {}
     bad_lines = 0
     total = 0
 
@@ -351,10 +359,11 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
                 try:
                     rec = json.loads(line)
                     rel = rec.get("relpath")
+                    tgt = rec.get("target_root", "")
                     size = rec.get("size")
                     mtime = rec.get("mtime")
                     if isinstance(rel, str) and isinstance(size, int) and isinstance(mtime, (int, float)):
-                        index[rel] = (int(size), float(mtime))
+                        index[(rel, tgt)] = (int(size), float(mtime))
                 except Exception:
                     bad_lines += 1
     except Exception as e:
@@ -366,15 +375,17 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
 
 
 def manifest_has_entry(
-    index: Dict[str, Tuple[int, float]],
+    index: Dict[Tuple[str, str], Tuple[int, float]],
     relpath_posix: str,
+    target_root: str,
     size: int,
     mtime: float,
     mtime_tolerance_s: float = 2.0,
 ) -> bool:
-    if relpath_posix not in index:
+    key = (relpath_posix, target_root)
+    if key not in index:
         return False
-    s0, t0 = index[relpath_posix]
+    s0, t0 = index[key]
     return (s0 == size) and (abs(t0 - mtime) <= mtime_tolerance_s)
 
 
@@ -403,6 +414,82 @@ def append_manifest_record(
     except Exception as e:
         # We log, but do not stop the transfer; manifest is a robustness aid.
         logf(f"[MANIFEST][ERROR] Failed to append manifest record ({e})")
+
+
+# ----------------------------
+# Retry helper
+# ----------------------------
+def copy_with_retry(
+    src: Path,
+    dst: Path,
+    *,
+    retries: int,
+    retry_delay_s: float,
+    logf,
+) -> Optional[Exception]:
+    """
+    Attempt shutil.copy2(src, dst) up to (1 + retries) times.
+    On each failure the partial destination is removed before the next attempt.
+    Returns None on success, or the last exception if all attempts fail.
+    """
+    last_exc: Optional[Exception] = None
+    attempts = 1 + retries
+    for attempt in range(1, attempts + 1):
+        try:
+            shutil.copy2(str(src), str(dst))
+            return None  # success
+        except Exception as e:
+            last_exc = e
+            # Remove partial/empty destination before retrying
+            try:
+                if dst.exists():
+                    dst.unlink()
+                    logf(f"[CLEANUP] Removed partial destination: {dst}")
+            except Exception as ce:
+                logf(f"[WARN] Could not remove partial destination: {dst} ({ce})")
+
+            if attempt < attempts:
+                logf(f"[RETRY] COPY attempt {attempt}/{attempts} failed: {src} ({e}). "
+                     f"Retrying in {retry_delay_s}s...")
+                time.sleep(retry_delay_s)
+
+    return last_exc
+
+
+def move_with_retry(
+    src: Path,
+    dst: Path,
+    *,
+    retries: int,
+    retry_delay_s: float,
+    logf,
+) -> Optional[Exception]:
+    """
+    Attempt shutil.move(src, dst) up to (1 + retries) times.
+    On each failure the partial destination is removed; the source is left intact.
+    Returns None on success, or the last exception if all attempts fail.
+    """
+    last_exc: Optional[Exception] = None
+    attempts = 1 + retries
+    for attempt in range(1, attempts + 1):
+        try:
+            shutil.move(str(src), str(dst))
+            return None  # success
+        except Exception as e:
+            last_exc = e
+            try:
+                if dst.exists():
+                    dst.unlink()
+                    logf(f"[CLEANUP] Removed partial destination: {dst}")
+            except Exception as ce:
+                logf(f"[WARN] Could not remove partial destination: {dst} ({ce})")
+
+            if attempt < attempts:
+                logf(f"[RETRY] MOVE attempt {attempt}/{attempts} failed: {src} ({e}). "
+                     f"Retrying in {retry_delay_s}s...")
+                time.sleep(retry_delay_s)
+
+    return last_exc
 
 
 # ----------------------------
@@ -459,15 +546,17 @@ def transfer_tree(
     lock_file: Path,
     user_name: str,
     ignore_manifest: bool,
-) -> Tuple[int, int, int, int, int, Path, Path]:
+    retries: int,
+    retry_delay_s: float,
+) -> Tuple[int, int, int, int, int, int, Path, Path]:
     """
     Returns:
-      (copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path)
+      (copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path)
     """
     max_bytes = int(max_size_gb * 1024**3)
     block_size = sample_block_kb * 1024
 
-    copied = moved = deleted_src = skipped_manifest = errors = 0
+    copied = moved = deleted_src = skipped_manifest = skipped_existing = errors = 0
 
     ts = timestamp_for_log()
     src_log_handle, tgt_log_handle, src_log_path, tgt_log_path = open_log_files(
@@ -499,6 +588,7 @@ def transfer_tree(
         logf(f"[INFO] Target: {target_dir}")
         logf(f"[INFO] Mode: {'DRY RUN' if dry_run else 'LIVE'} | Overwrite: {overwrite}")
         logf(f"[INFO] maxSizeGB: {max_size_gb}")
+        logf(f"[INFO] Retries: {retries} | Retry delay: {retry_delay_s}s")
         logf(f"[INFO] Partial-hash sampling: {sample_blocks} blocks x {sample_block_kb} KB (~{total_mb:.2f} MB/file)")
 
         if move_exts:
@@ -630,7 +720,7 @@ def transfer_tree(
                                 "note": "cleanup: dst existed; verified by partial hash; deleted source under current move rules",
                             }
                             append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
-                            manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
+                            manifest_index[(rel_path_posix, str(target_dir))] = (int(src_size), float(src_mtime))
                             continue
                     else:
                         # dst exists but mismatch -> do NOT delete source
@@ -639,36 +729,76 @@ def transfer_tree(
 
                 # --- Manifest-based skip (only for staging actions) ---
                 # If we already have a manifest entry for this file version, don't re-stage it.
-                if manifest_has_entry(manifest_index, rel_path_posix, int(src_size), float(src_mtime)):
+                # --overwrite bypasses this: the user explicitly wants to re-transfer regardless of
+                # what the manifest recorded (which may have been for a different target drive).
+                if not overwrite and manifest_has_entry(manifest_index, rel_path_posix, str(target_dir), int(src_size), float(src_mtime)):
                     logf(f"[SKIP-MANIFEST] Already staged/archived per manifest: {rel_path_posix}")
                     skipped_manifest += 1
                     continue
 
-                # If destination exists and overwrite is requested, delete destination and proceed.
-                if dst_file.exists() and overwrite:
-                    if dry_run:
-                        logf(f"[DEL ] {dst_file}")
+                # Handle existing destination file for COPY-category and MOVE-category.
+                if dst_file.exists():
+                    if not do_move:
+                        # COPY-category: decide whether to skip or overwrite based on size / mtime.
+                        if overwrite:
+                            # --overwrite: skip only if size AND mtime match exactly (re-copying would be wasteful).
+                            if same_file_size_and_mtime(src_file, dst_file):
+                                logf(f"[SKIP] dst identical (size+mtime match, --overwrite set): {dst_file}")
+                                skipped_existing += 1
+                                continue
+                            # Not identical — delete dst and fall through to copy.
+                            if dry_run:
+                                logf(f"[DEL ] {dst_file} (--overwrite, dst differs)")
+                            else:
+                                try:
+                                    dst_file.unlink()
+                                    logf(f"[DEL ] {dst_file} (--overwrite, dst differs)")
+                                except Exception as e:
+                                    logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
+                                    errors += 1
+                                    continue
+                        else:
+                            # No --overwrite: skip if dst is at least as large as src (intact or overshoot).
+                            # Re-copy if dst is smaller (partial write from a previous failed transfer).
+                            try:
+                                dst_size_bytes = dst_file.stat().st_size
+                            except Exception:
+                                dst_size_bytes = 0
+                            if dst_size_bytes >= src_size:
+                                logf(f"[SKIP] dst exists and size >= src ({dst_size_bytes} >= {int(src_size)}): {dst_file}")
+                                skipped_existing += 1
+                                continue
+                            # dst is smaller — fall through to re-copy (shutil.copy2 will truncate and overwrite).
+                            logf(f"[INFO] dst exists but smaller than src ({dst_size_bytes} < {int(src_size)}), will re-copy: {dst_file}")
                     else:
-                        try:
-                            dst_file.unlink()
-                            logf(f"[DEL ] {dst_file}")
-                        except Exception as e:
-                            logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
-                            errors += 1
-                            continue
+                        # MOVE-category with overwrite: delete dst and fall through to move.
+                        # (MOVE-category without overwrite is already handled above by the partial-hash block.)
+                        if overwrite:
+                            if dry_run:
+                                logf(f"[DEL ] {dst_file} (--overwrite, MOVE-category)")
+                            else:
+                                try:
+                                    dst_file.unlink()
+                                    logf(f"[DEL ] {dst_file} (--overwrite, MOVE-category)")
+                                except Exception as e:
+                                    logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
+                                    errors += 1
+                                    continue
 
                 # Destination does not exist (or we deleted it due to overwrite)
                 if do_move:
                     if dry_run:
                         logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                     else:
-                        try:
-                            shutil.move(str(src_file), str(dst_file))
-                            logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
-                        except Exception as e:
-                            logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({e})")
+                        exc = move_with_retry(
+                            src_file, dst_file,
+                            retries=retries, retry_delay_s=retry_delay_s, logf=logf,
+                        )
+                        if exc is not None:
+                            logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({exc})")
                             errors += 1
                             continue
+                        logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                     moved += 1
 
                     # Manifest record for MOVE
@@ -683,19 +813,21 @@ def transfer_tree(
                         "action": "MOVE",
                     }
                     append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
-                    manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
+                    manifest_index[(rel_path_posix, str(target_dir))] = (int(src_size), float(src_mtime))
 
                 else:
                     if dry_run:
                         logf(f"[COPY] {src_file} -> {dst_file} ({int(src_size) / 1024**2:.1f} MB)")
                     else:
-                        try:
-                            shutil.copy2(str(src_file), str(dst_file))
-                            logf(f"[COPY] {src_file} -> {dst_file} ({int(src_size) / 1024**2:.1f} MB)")
-                        except Exception as e:
-                            logf(f"[ERROR] COPY failed: {src_file} -> {dst_file} ({e})")
+                        exc = copy_with_retry(
+                            src_file, dst_file,
+                            retries=retries, retry_delay_s=retry_delay_s, logf=logf,
+                        )
+                        if exc is not None:
+                            logf(f"[ERROR] COPY failed: {src_file} -> {dst_file} ({exc})")
                             errors += 1
                             continue
+                        logf(f"[COPY] {src_file} -> {dst_file} ({int(src_size) / 1024**2:.1f} MB)")
                     copied += 1
 
                     # Manifest record for COPY
@@ -710,14 +842,14 @@ def transfer_tree(
                         "action": "COPY",
                     }
                     append_manifest_record(source_dir, rec, dry_run=dry_run, logf=logf)
-                    manifest_index[rel_path_posix] = (int(src_size), float(src_mtime))
+                    manifest_index[(rel_path_posix, str(target_dir))] = (int(src_size), float(src_mtime))
 
         logf("-" * 110)
         logf(f"[INFO] Done: {datetime.now().isoformat(timespec='seconds')}")
         logf(f"[INFO] Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | "
-             f"Skipped(manifest): {skipped_manifest} | Errors: {errors}")
+             f"Skipped(manifest): {skipped_manifest} | Skipped(existing): {skipped_existing} | Errors: {errors}")
 
-        return copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path
+        return copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path
 
     finally:
         if src_log_handle:
@@ -753,6 +885,11 @@ def main() -> int:
 
     ap.add_argument("--ignore-manifest", action="store_true",
                     help="Ignore manifest and process files as if none were previously staged/archived.")
+
+    ap.add_argument("--retries", type=int, default=DEFAULT_RETRIES,
+                    help=f"Number of retries after a failed copy/move before giving up. Default: {DEFAULT_RETRIES}")
+    ap.add_argument("--retry-delay-s", type=float, default=DEFAULT_RETRY_DELAY_S,
+                    help=f"Seconds to wait between retries. Default: {DEFAULT_RETRY_DELAY_S}")
 
     args = ap.parse_args()
 
@@ -807,10 +944,11 @@ def main() -> int:
     print(f"move-keyword: {move_keywords if move_keywords else '<none>'}")
     print(f"include-ext: {sorted(include_exts) if include_exts else '<none>'}")
     print(f"Partial-hash sampling: {args.sample_blocks} blocks x {args.sample_block_kb} KB (~{total_mb:.2f} MB/file)")
+    print(f"Retries: {args.retries} | Retry delay: {args.retry_delay_s}s")
     print(f"Manifest: {manifest_path(src)} ({'ignored' if args.ignore_manifest else 'active'})")
     print("-" * 110)
 
-    copied, moved, deleted_src, skipped_manifest, errors, src_log_path, tgt_log_path = transfer_tree(
+    copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path = transfer_tree(
         source_dir=src,
         target_dir=tgt,
         max_size_gb=args.maxSize,
@@ -825,6 +963,8 @@ def main() -> int:
         lock_file=lock_file,
         user_name=user_name,
         ignore_manifest=args.ignore_manifest,
+        retries=args.retries,
+        retry_delay_s=args.retry_delay_s,
     )
 
     print("-" * 110)
