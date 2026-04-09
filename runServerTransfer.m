@@ -110,9 +110,7 @@ end
 % -----------------------------
 % Execute
 % -----------------------------
-[status, cmdout] = system(cmd);
-
-fprintf('%s\n', cmdout);
+[status, cmdout] = system(cmd, '-echo');
 
 if status ~= 0
     warning('serverTransfer.py returned non-zero exit status: %d', status);
