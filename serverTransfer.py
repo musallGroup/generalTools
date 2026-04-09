@@ -57,8 +57,8 @@ DEFAULT_SAMPLE_BLOCKS = 16
 DEFAULT_SAMPLE_BLOCK_KB = 64  # 16 * 64KB = 1024KB ~ 1MB
 
 # Default retry behaviour for copy/move failures (e.g. transient USB bridge timeouts)
-DEFAULT_RETRIES = 3
-DEFAULT_RETRY_DELAY_S = 10
+DEFAULT_RETRIES = 10
+DEFAULT_RETRY_DELAY_S = 5
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 

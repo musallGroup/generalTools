@@ -20,7 +20,7 @@ if strcmpi(outtype,'logical')
     logicalOut = true; %flag to convert output to logicals
 end
     
-if isempty(bin) || isinf(bin) || bin < 1
+if isempty(bin) || isinf(bin) || bin <= 1
     DataOut = DataIn;
 else
     
