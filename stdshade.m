@@ -2,11 +2,14 @@ function [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth,avgType)
 % usage: [lineOut, fillOut] = stdshade(amatrix,alpha,acolor,F,smth,avgType)
 % plot mean and sem/std coming from a matrix of data, at which each row is an
 % observation. sem/std is shown as shading.
-% - acolor defines the used color (default is red) 
+% - acolor defines the used color (default is red)
 % - F assignes the used x axis (default is steps of 1).
 % - alpha defines transparency of the shading (default is no shading and black mean line)
 % - smth defines the smoothing factor (default is no smooth)
 % - avgType defines the type of averaging. Either 'mean' or 'median'.
+%   Alternatively, pass a numeric vector as avgType to supply pre-computed
+%   SEM directly: stdshade(meanVec, alpha, color, F, smth, semVec)
+%   In this mode amatrix is treated as the mean (row vector).
 % smusall 2010/4/23
 
 if exist('acolor','var')==0 || isempty(acolor)
@@ -33,19 +36,27 @@ if ne(size(F,1),1)
     F=F';
 end
 
-if strcmpi(avgType, 'mean')
+if isnumeric(avgType) && ~isempty(avgType)
+    % pre-computed mean and SEM passed directly:
+    %   stdshade(meanVec, alpha, color, F, smth, semVec)
+    amean    = amatrix(:)';
+    sem      = avgType(:)';
+    astdHigh = amean + sem;
+    astdLow  = amean - sem;
+
+elseif strcmpi(avgType, 'mean')
     amean = nanmean(amatrix,1); %get man over first dimension
     % astd = nanstd(amatrix,[],1); % to get std shading
     astd = (nanstd(amatrix,[],1)/sqrt(size(amatrix,1))); % to get sem shading
     astdHigh = amean + astd; %get SEM above mean
     astdLow = amean - astd; %get SEM below mean
-           
+
 elseif strcmpi(avgType, 'median')
     %     amean = nanmedian(amatrix,1); %get man over first dimension
     amean = prctile(amatrix,50,1); %get median as 50th prctile
     astdHigh = prctile(amatrix,75,1); %upper shading range
     astdLow = prctile(amatrix,25,1); %lower shading range
-        
+
 else
     error('unknown average type');
 end
@@ -77,7 +88,7 @@ if any(isnan(amean)) %make multiple patches if there are nans
             cEupper = astdHigh(cIdx);
             cElower = astdLow(cIdx);
             
-            if smth > 1
+            if smth > 1 && numel(cIdx) > smth
                 amean(cIdx) = boxFilter(amean(cIdx),smth); %use boxfilter to smooth data
                 cEupper = boxFilter(cEupper,smth); %use boxfilter to smooth data
                 cElower = boxFilter(cElower,smth); %use boxfilter to smooth data
