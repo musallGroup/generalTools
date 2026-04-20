@@ -133,6 +133,10 @@ entry with the same (relative path, size, mtime). This remains effective even if
 emptied by the archiving workflow.
 """
 
+__version__ = "1.0.0"
+__author__  = "Simon Musall"
+__email__   = "s.musall@fz-juelich.de"
+
 from __future__ import annotations
 
 import argparse
