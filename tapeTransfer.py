@@ -19,7 +19,7 @@ Examples (PowerShell)
    python tapeTransfer.py "O:\Massive Data Imaging\Proj\Session1" --dry-run
 
 3) Force move some file types / keywords:
-   python tapeTransfer.py "D:\data\run1" --move-ext .tif .tiff .bin --move-keyword raw video
+   python tapeTransfer.py "D:\data\run1" --move-ext .tif .tiff .bin --move-keyword raw_video
 
 4) Ignore manifest (force re-staging checks off):
    python tapeTransfer.py "D:\data\run1" --ignore-manifest
