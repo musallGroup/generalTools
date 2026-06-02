@@ -67,7 +67,7 @@ This is the central reference for functions available in the generalTools reposi
 | `nhline` | root | Horizontal line(s) at specified y positions |
 | `freezeColors` | root | Lock colors of plot (allows multiple colormaps per figure) |
 | `unfreezeColors` | root | Restore colors of plot to original indexed color |
-| `figToPDF` | root | Save figure as PDF (vector) and PNG (600 dpi) on A4 |
+| `figToPDF` | root | Save figure as PDF (vector, via print/painters) and PNG (600 dpi) on A4 |
 | `plotRowsWithColormap` | Playground/Simon | Plot each row of matrix with colors from colormap |
 | `plot_with_error_shading_GN` | Playground/Gerion | Plot average trace with error shading |
 | `reverseAxisColor` | Playground/Simon | Switch colors from black-on-white to white-on-black |
