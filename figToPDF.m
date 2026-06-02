@@ -68,19 +68,14 @@ if ~isfolder(fdir)
     mkdir(fdir);
 end
 
-% painters renderer is synchronous; figures rendered on creation so exportgraphics
-% proceeds without waiting.
 origRenderer = get(hFig, 'Renderer');
-set(hFig, 'Renderer', 'painters');
 
-drawnow;
-exportgraphics(hFig, outFile, 'ContentType', 'vector');
+print(hFig, fullfile(fdir, fname), '-dpdf', '-painters');
 fprintf('Figure saved: %s\n', outFile);
 
 % high-resolution PNG
 pngFile = fullfile(fdir, [fname '.png']);
-drawnow;
-exportgraphics(hFig, pngFile, 'Resolution', 600);
+print(hFig, fullfile(fdir, fname), '-dpng', '-r600');
 fprintf('Figure saved: %s\n', pngFile);
 
 % restore renderer and paper properties
