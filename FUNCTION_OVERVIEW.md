@@ -1,7 +1,7 @@
 # generalTools Function Overview
 
-**Last updated:** 2026-05-10  
-**Total functions:** 240+ (excluding libraries)
+**Last updated:** 2026-05-25  
+**Total functions:** 246+ (excluding libraries)
 
 This is the central reference for functions available in the generalTools repository. Use Ctrl+F to search for specific functionality. When implementing new features, check here first to avoid re-inventing existing solutions.
 
@@ -108,6 +108,17 @@ This is the central reference for functions available in the generalTools reposi
 | `BinoPlot` | root | Plot binomial data with optional linear/sigmoid fitting |
 | `getConfidenceIntervals` | Playground/Simon | Compute 95% confidence intervals via bootstrapping |
 | `compute95CI` | Playground/Gerion | Infer dimension and compute 95% CI |
+
+### NaN Handling (MATLAB 2025+ compatibility wrappers)
+
+| Function | Location | Description |
+|----------|----------|-------------|
+| `nanmean` | root | Mean ignoring NaN values (wraps `mean(..., 'omitnan')`) |
+| `nanmedian` | root | Median ignoring NaN values (wraps `median(..., 'omitnan')`) |
+| `nanstd` | root | Standard deviation ignoring NaN values (wraps `std(..., 'omitnan')`) |
+| `nansum` | root | Sum ignoring NaN values (wraps `sum(..., 'omitnan')`) |
+| `nanmin` | root | Minimum ignoring NaN values (wraps `min(..., 'omitnan')`) |
+| `nanmax` | root | Maximum ignoring NaN values (wraps `max(..., 'omitnan')`) |
 
 ---
 

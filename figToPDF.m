@@ -68,15 +68,23 @@ if ~isfolder(fdir)
     mkdir(fdir);
 end
 
-print(hFig, outFile, '-dpdf', '-painters');
+% painters renderer is synchronous; figures rendered on creation so exportgraphics
+% proceeds without waiting.
+origRenderer = get(hFig, 'Renderer');
+set(hFig, 'Renderer', 'painters');
+
+drawnow;
+exportgraphics(hFig, outFile, 'ContentType', 'vector');
 fprintf('Figure saved: %s\n', outFile);
 
-% high-resolution PNG (600 dpi, opengl renderer for raster fidelity)
+% high-resolution PNG
 pngFile = fullfile(fdir, [fname '.png']);
-print(hFig, pngFile, '-dpng', '-r600');
+drawnow;
+exportgraphics(hFig, pngFile, 'Resolution', 600);
 fprintf('Figure saved: %s\n', pngFile);
 
-% restore original paper properties
+% restore renderer and paper properties
+set(hFig, 'Renderer',          origRenderer);
 set(hFig, 'PaperUnits',        origUnits);
 set(hFig, 'PaperSize',         origSize);
 set(hFig, 'PaperPosition',     origPos);
