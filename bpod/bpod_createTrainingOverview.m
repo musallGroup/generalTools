@@ -1,15 +1,16 @@
 function bpod_createTrainingOverview(cAnimal)
 %% set some basic variables and get behavior
-opts.cPath = 'D:\Bpod Local\Data\'; %for data from bpod setup
+% opts.cPath = 'E:\Bpod Local\Data\'; %for data from bpod setup
+opts.cPath = 'E:\Behavior_data\'; %for data from bpod setup
 % opts.cPath = '\\naskampa\data\BpodBehavior\'; %for data from bpod setup
 % opts.cPath = '\\naskampa\lts\Multisensory_task\MS_task_V2_5\'; %for data from teensy setup
-opts.savePath = 'D:\\Behavior_data\';
+opts.savePath = 'E:\\Behavior_data\';
 
 % animal info
 opts.cAnimal = cAnimal; %animal name
 opts.dateRange = {'01-Aug-2021', '12-Dec-2026'}; %date range
 % opts.expType = 'Visual navigation'; %Experimental row c
-opts.expType = 'Multisensory navigation'; %Experimental row D
+opts.expType = 'Multisensory navigation'; %Experimental row E
 % opts.expType = 'Visual discrimination'; %Experimental row B
 
 %% analysis for different paradigms in chronological order
@@ -24,7 +25,7 @@ else
     allOut = [];
     for iParams = 1 : length(cParadigms)
         opts.paradigm = cParadigms(iParams).name;
-        passiveParadigms = {'OptoOwl', 'MotionMule', 'MotionMare', 'MultiMouse'}; %ignore passive paradigms
+        passiveParadigms = {'OptoOwl', 'MotionMule', 'MotionMare', 'MultiMouse', 'UncertainUrchin', 'PhasemapPony'}; %ignore passive paradigms
         if ~any(strcmpi(opts.paradigm, passiveParadigms))
             out = bpod_checkSessions(opts);
             allOut = bA_appendBehavior(allOut, out);
@@ -51,13 +52,9 @@ if ~isempty(allOut.sessionDur)
     fprintf(fileID, ['######## ' opts.cAnimal ' - Behavioral Task Report ########\n']);
     fprintf(fileID, '==============================================================\n');
     for iSessions = 1 : length(cIdx)
-        fprintf(fileID, [allOut.sessionType{iSessions} '\n']);
+        fprintf(fileID, [opts.expType '\n']);
         fprintf(fileID, '%s; Session duration: %.2f minutes\n', allOut.sessionTime{iSessions}, allOut.sessionDur(iSessions));
         fprintf(fileID, 'Number of trials: %i; Performance: %.2f percent\n', allOut.sessionTrialCount(iSessions), allOut.performance(iSessions)*100);
-%         fprintf(fileID, 'Total reward given: %.2f ml\n', allOut.sessionRewardAmount(iSessions));
-        if ~isempty(allOut.sessionNotes{iSessions})
-            fprintf(fileID, 'Notes: %s\n', allOut.sessionNotes{iSessions});
-        end
         fprintf(fileID, '==============================================================\n');
     end
     fclose(fileID);

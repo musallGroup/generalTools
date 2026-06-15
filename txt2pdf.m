@@ -65,7 +65,7 @@ function txt2pdf(inputTxtFile, outputPdfFile, linesPerPage, fontSize)
     cmd = sprintf('%s -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="%s" "%s"', ...
         gsCmd, outputPdfFile, psFile);
 
-    status = system(cmd);
+    [status, out] = system(cmd);
     if status ~= 0
         error('Ghostscript conversion failed. Make sure GS is installed and in PATH.');
     end

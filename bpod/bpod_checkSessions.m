@@ -70,6 +70,11 @@ for iFiles = 1:size(files,1)
             useRec(iFiles) = true;
         end
 
+        % if recording is weekend
+        if weekday(recDate(iFiles)) == 1 || weekday(recDate(iFiles)) == 7
+            useRec(iFiles) = false;
+        end
+
     catch
         useRec(iFiles) = false; %dont use if date comparison fails
     end
