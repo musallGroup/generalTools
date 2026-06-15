@@ -131,6 +131,7 @@ end
 %% save output to text file
 fileName = ['serverCheck_' datestr(now,'yyyymmdd_HHMMSS') '.txt'];
 targFolder = fullfile(basePath, 'serverCheck');
+disp(targFolder)
 if ~exist(targFolder, 'dir'); mkdir(targFolder); end
 fileID = fopen(fullfile(targFolder, fileName),'w');
 C = [
