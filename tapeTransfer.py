@@ -131,11 +131,18 @@ Each line is a JSON object containing:
 On subsequent runs, the script loads the manifest and will SKIP files that already have a manifest
 entry with the same (relative path, size, mtime). This remains effective even if TAPE_TRANSFER is
 emptied by the archiving workflow.
+
+
+Version history
+----------------
+1.0.2 (2026-08-05): Normalize naskampa UNC host aliases (\\naskampa vs \\naskampa.kampa-10g)
+and share-name casing before any path computation, so manifest logging and lock-file checks are
+consistent regardless of which alias reached the share.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -145,6 +152,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 from datetime import datetime
 from pathlib import PureWindowsPath, Path
@@ -160,6 +168,30 @@ COPY_LOCK_PREFIX = "TAPE_COPY_IN_PROGRESS"
 
 # Conservative Windows MAX_PATH guard (classic limit is 260; keep buffer for internal handling)
 MAX_SAFE_PATH_CHARS = 240
+
+
+# ----------------------------
+# UNC host/share alias normalization
+# ----------------------------
+# \\naskampa.kampa-10g\... (10G-connected PCs) and \\naskampa\... (everyone else)
+# point to the same physical share. Canonicalize both the host and the share-name
+# casing (we've seen "lts" and "LTS" in the wild) so path comparisons, manifest
+# logging, and lock-file detection are all consistent regardless of which alias
+# was used to reach the share.
+UNC_HOST_ALIASES = {
+    "naskampa.kampa-10g": "naskampa",
+}
+
+
+def normalize_unc_root(path_str: str) -> str:
+    """Canonicalize known UNC host aliases and lowercase the share name. Non-UNC
+    paths (drive letters) are returned unchanged."""
+    m = re.match(r"^(\\\\)([^\\]+)\\([^\\]+)(.*)$", path_str)
+    if not m:
+        return path_str
+    prefix, host, share, rest = m.groups()
+    host_canon = UNC_HOST_ALIASES.get(host.lower(), host.lower())
+    return f"{prefix}{host_canon}\\{share.lower()}{rest}"
 
 
 # ----------------------------
@@ -846,6 +878,8 @@ def main() -> int:
                     help="Ignore manifest and process files as if none were previously staged/archived.")
 
     args = ap.parse_args()
+
+    args.source = normalize_unc_root(args.source)
 
     user_name = getpass.getuser()
 

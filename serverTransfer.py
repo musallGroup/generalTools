@@ -35,9 +35,20 @@ Examples (PowerShell)
 
 5) Ignore manifest (force re-staging checks off):
    python serverTransfer.py "D:\data\run1" --target-root "E:\" --ignore-manifest
+
+
+Version history
+----------------
+1.0.0 (2026-08-05): First tracked version. Normalizes naskampa UNC host aliases (\\naskampa vs
+\\naskampa.kampa-10g) and share-name casing before any path computation, so the source/target
+overlap safety check isn't fooled by comparing the same physical share under two different aliases.
 """
 
 from __future__ import annotations
+
+__version__ = "1.0.0"
+__author__  = "Simon Musall"
+__email__   = "s.musall@fz-juelich.de"
 
 import argparse
 import getpass
@@ -45,6 +56,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import time
 from datetime import datetime
@@ -78,6 +90,29 @@ def normalize_target_root(target_root: str) -> PureWindowsPath:
     if not p.parts:
         raise ValueError("Empty target root.")
     return p
+
+
+# ----------------------------
+# UNC host/share alias normalization
+# ----------------------------
+# \\naskampa.kampa-10g\... (10G-connected PCs) and \\naskampa\... (everyone else)
+# point to the same physical share. Canonicalize both the host and the share-name
+# casing (we've seen "lts" and "LTS" in the wild) so path comparisons (notably
+# validate_source_target_relationship below) aren't fooled by alias differences.
+UNC_HOST_ALIASES = {
+    "naskampa.kampa-10g": "naskampa",
+}
+
+
+def normalize_unc_root(path_str: str) -> str:
+    """Canonicalize known UNC host aliases and lowercase the share name. Non-UNC
+    paths (drive letters) are returned unchanged."""
+    m = re.match(r"^(\\\\)([^\\]+)\\([^\\]+)(.*)$", path_str)
+    if not m:
+        return path_str
+    prefix, host, share, rest = m.groups()
+    host_canon = UNC_HOST_ALIASES.get(host.lower(), host.lower())
+    return f"{prefix}{host_canon}\\{share.lower()}{rest}"
 
 
 def compute_target_path_server(source: str, target_root: str) -> PureWindowsPath:
@@ -892,6 +927,9 @@ def main() -> int:
                     help=f"Seconds to wait between retries. Default: {DEFAULT_RETRY_DELAY_S}")
 
     args = ap.parse_args()
+
+    args.source = normalize_unc_root(args.source)
+    args.target_root = normalize_unc_root(args.target_root)
 
     user_name = getpass.getuser()
 
