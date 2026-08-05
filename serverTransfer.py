@@ -42,11 +42,16 @@ Version history
 1.0.0 (2026-08-05): First tracked version. Normalizes naskampa UNC host aliases (\\naskampa vs
 \\naskampa.kampa-10g) and share-name casing before any path computation, so the source/target
 overlap safety check isn't fooled by comparing the same physical share under two different aliases.
+1.0.1 (2026-08-05): Fixed a regression in 1.0.0 - normalizing args.source/args.target_root directly
+silently forced every run onto the standard alias regardless of what the user specified, defeating
+deliberate use of a faster network route (e.g. \\naskampa.kampa-10g). The alias normalization is now
+applied only inside _norm_for_prefix_check(), scoped to the source/target overlap safety check; the
+src/tgt paths used for the actual copy/move operations are left exactly as specified.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -156,14 +161,23 @@ def _norm_for_prefix_check(p: Path) -> str:
     Normalize a Path for safe prefix comparisons on Windows:
     - resolve where possible (may fail on UNC/offline; fall back)
     - absolute
+    - canonicalize known UNC host aliases (.resolve() does NOT do this - it only
+      handles '.'/'..'/symlinks - so without this, comparing a source given via
+      \\naskampa\... against a target given via \\naskampa.kampa-10g\... would
+      miss that they're the same physical share)
     - casefolded
     - ensure trailing separator for prefix tests
+
+    Note: this normalization is intentionally local to this comparison. The
+    actual src/tgt Path objects used for file I/O elsewhere in this script are
+    NOT normalized, so a user's deliberate choice of alias (e.g. for a faster
+    network route) is always respected for the real copy/move operations.
     """
     try:
         rp = p.resolve()
     except Exception:
         rp = p.absolute()
-    s = str(PureWindowsPath(str(rp)))
+    s = normalize_unc_root(str(PureWindowsPath(str(rp))))
     s = s.casefold()
     # Ensure trailing backslash for proper prefix tests
     if not s.endswith("\\"):
@@ -927,9 +941,6 @@ def main() -> int:
                     help=f"Seconds to wait between retries. Default: {DEFAULT_RETRY_DELAY_S}")
 
     args = ap.parse_args()
-
-    args.source = normalize_unc_root(args.source)
-    args.target_root = normalize_unc_root(args.target_root)
 
     user_name = getpass.getuser()
 

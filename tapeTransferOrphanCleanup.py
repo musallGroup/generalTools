@@ -61,14 +61,12 @@ tapeTransfer.py, with action "DEL-SRC-ORPHAN".
 
 Version history
 ----------------
-1.0.1 (2026-08-05): Normalize naskampa UNC host aliases (\\naskampa vs \\naskampa.kampa-10g) and
-share-name casing before any path computation, via tapeTransfer.normalize_unc_root, for consistency
-with tapeTransfer.py and serverTransfer.py.
+
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.1"
+__version__ = "1.0.0"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -89,7 +87,6 @@ from tapeTransfer import (
     append_manifest_record,
     normalize_exts,
     normalize_keywords,
-    normalize_unc_root,
     path_contains_tape_transfer,
     safe_stat_size_mtime,
     should_move,
@@ -151,8 +148,6 @@ def main() -> int:
                     help="Actually delete eligible orphaned source files. Default: dry-run (report only).")
 
     args = ap.parse_args()
-
-    args.source = normalize_unc_root(args.source)
 
     user_name = getpass.getuser()
     src_pw = Path(args.source)

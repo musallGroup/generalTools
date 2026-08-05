@@ -135,9 +135,8 @@ emptied by the archiving workflow.
 
 Version history
 ----------------
-1.0.2 (2026-08-05): Normalize naskampa UNC host aliases (\\naskampa vs \\naskampa.kampa-10g)
-and share-name casing before any path computation, so manifest logging and lock-file checks are
-consistent regardless of which alias reached the share.
+1.0.2 (2026-08-05): Normalize naskampa UNC host aliases (\\naskampa vs \\naskampa.kampa-10g) at RWTH server
+
 """
 
 from __future__ import annotations
@@ -878,8 +877,6 @@ def main() -> int:
                     help="Ignore manifest and process files as if none were previously staged/archived.")
 
     args = ap.parse_args()
-
-    args.source = normalize_unc_root(args.source)
 
     user_name = getpass.getuser()
 
