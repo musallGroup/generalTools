@@ -6,7 +6,7 @@ serverTransfer.py
 Purpose
 -------
 Mirror a source directory tree into a user-defined target root (e.g. E:\ or \\naskampa\lts\).
-By default, the script COPIES files; it MOVES only large files (default threshold 10 GB) or
+By default, the script COPIES files; it MOVES only large files (default threshold 20 GB) or
 files matching explicit "move" criteria.
 
 This script is intentionally kept as close as possible to tapeTransfer.py. The main differences:
@@ -47,11 +47,17 @@ silently forced every run onto the standard alias regardless of what the user sp
 deliberate use of a faster network route (e.g. \\naskampa.kampa-10g). The alias normalization is now
 applied only inside _norm_for_prefix_check(), scoped to the source/target overlap safety check; the
 src/tgt paths used for the actual copy/move operations are left exactly as specified.
+1.0.2 (2026-08-06): Fixed empty target folders being created. transfer_tree() previously called
+ensure_dir() on every directory encountered by os.walk (the current dir and each of its immediate
+subdirs), regardless of whether that directory tree contained any files. Target folders are now
+created lazily via the existing ensure_dir(dst_file.parent, ...) call, which only fires right before
+a file is actually copied/moved - so a source folder (or a folder containing only empty subfolders)
+never gets a corresponding empty folder created in the target.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -679,10 +685,10 @@ def transfer_tree(
             rel_dir = root_path.relative_to(source_dir)
             out_root = target_dir / rel_dir
 
-            ensure_dir(out_root, dry_run=dry_run, logf=logf)
-            for d in dirs:
-                ensure_dir(out_root / d, dry_run=dry_run, logf=logf)
-
+            # Directories are created lazily (see ensure_dir(dst_file.parent, ...) below),
+            # only when a file actually needs to land in them. This avoids creating empty
+            # target folders for source directories that contain no files (directly or in
+            # any subfolder).
             for fname in files:
                 # Skip logs and manifest folder itself to avoid re-transferring control files
                 if fname.startswith("transferLog_") and fname.endswith(".log"):
@@ -912,7 +918,7 @@ def main() -> int:
     ap.add_argument("source", help="Source folder path (Windows path or UNC path).")
     ap.add_argument("--target-root", required=True, help=r"Target root (e.g. E:\ or \\naskampa\lts\).")
 
-    ap.add_argument("--maxSize", type=float, default=10.0,
+    ap.add_argument("--maxSize", type=float, default=20.0,
                     help="Move files larger than this size (GB). Default: 10")
 
     ap.add_argument("--move-ext", nargs="*", default=None,
