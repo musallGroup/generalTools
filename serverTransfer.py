@@ -53,11 +53,29 @@ subdirs), regardless of whether that directory tree contained any files. Target 
 created lazily via the existing ensure_dir(dst_file.parent, ...) call, which only fires right before
 a file is actually copied/moved - so a source folder (or a folder containing only empty subfolders)
 never gets a corresponding empty folder created in the target.
+1.0.3 (2026-08-08): Added --target (explicit full destination path), as an alternative to
+--target-root, for moves where the destination structure doesn't mirror the source's relative path
+(--target-root always preserves the source's tail path verbatim under the given root, which can't
+express a rename/restructure like <root>/invivo_ephys/PNPdata -> <root>/Projects/PNPanalysis/PNPdata).
+Exactly one of --target-root/--target is required. Everything else (safety checks, manifest, hash
+verification, two-pass SafeMove usage) is unchanged.
+1.0.4 (2026-08-08): Added Windows long-path (\\?\) support. Confirmed via direct test that
+os.makedirs()/shutil.copy2() raise WinError 206 ("filename or extension is too long") on naskampa
+shares well under 300 chars, even though PowerShell/Explorer tolerate much longer paths there -
+the old MAX_SAFE_PATH_CHARS=240 guard was correctly avoiding a real crash, not being overly cautious.
+All actual file I/O (mkdir, stat, open, copy2, move, unlink, exists checks) now goes through new
+lp_*()/long_path() helpers that prefix paths with the \\?\ extended-path marker (or \\?\ + UNC for
+UNC paths), bypassing the
+classic MAX_PATH limit per-process with no admin/registry change needed. MAX_SAFE_PATH_CHARS raised
+from 240 to 32000 (the real Windows long-path ceiling) since it's no longer needed as a MAX_PATH
+guard - kept only as a formality against pathological cases. Surfaced by a PNPdata migration where
+~2401 files (SpikeInterface/OpenEphys/phy outputs, some genuine primary data, not just cache) were
+being silently skipped under the old guard.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.2"
+__version__ = "1.0.4"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -85,8 +103,53 @@ DEFAULT_RETRY_DELAY_S = 10
 
 LOCK_FILENAME = "TAPE_TRANSFER_IN_PROGRESS.lock"
 
-# Conservative Windows MAX_PATH guard (classic limit is 260; keep buffer for internal handling)
-MAX_SAFE_PATH_CHARS = 240
+# Windows long-path ceiling when using the \\?\ prefix (see long_path() below) is ~32767
+# chars; this is just a sane formality guard against pathological cases, not the classic
+# 260-char MAX_PATH (which the lp_*/long_path() helpers bypass for all real file I/O).
+MAX_SAFE_PATH_CHARS = 32000
+
+
+# ----------------------------
+# Long-path support (Windows \\?\ prefix)
+# ----------------------------
+# Confirmed necessary, not just precautionary: Python's os.makedirs()/shutil.copy2()
+# raise WinError 206 ("filename or extension is too long") well under 300 chars on
+# naskampa shares, even though PowerShell/Explorer tolerate much longer paths there.
+# The \\?\ (or \\?\UNC\ for UNC paths) prefix tells the Win32 file APIs to bypass the
+# classic ~260-char MAX_PATH limit entirely, per-process, with no admin/registry change
+# needed. Applied only at the actual I/O call sites below (lp_* helpers / shutil calls) -
+# Path objects elsewhere keep their normal (unprefixed) string form for display/logging.
+def long_path(p) -> str:
+    s = str(p)
+    if s.startswith("\\\\?\\"):
+        return s
+    if s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + s[2:]
+    return "\\\\?\\" + s
+
+
+def lp_exists(p) -> bool:
+    return os.path.exists(long_path(p))
+
+
+def lp_isdir(p) -> bool:
+    return os.path.isdir(long_path(p))
+
+
+def lp_mkdir(p) -> None:
+    os.makedirs(long_path(p), exist_ok=True)
+
+
+def lp_unlink(p) -> None:
+    os.remove(long_path(p))
+
+
+def lp_stat(p):
+    return os.stat(long_path(p))
+
+
+def lp_open(p, mode, **kwargs):
+    return open(long_path(p), mode, **kwargs)
 
 
 # ----------------------------
@@ -246,25 +309,25 @@ def normalize_keywords(keys: Optional[Iterable[str]]) -> list[str]:
 # Filesystem helpers
 # ----------------------------
 def ensure_dir(path: Path, dry_run: bool, logf) -> None:
-    if path.exists():
+    if lp_exists(path):
         return
     if dry_run:
         logf(f"[MKDIR] {path}")
         return
-    path.mkdir(parents=True, exist_ok=True)
+    lp_mkdir(path)
     logf(f"[MKDIR] {path}")
 
 
 def safe_stat_size_mtime(p: Path) -> Tuple[Optional[int], Optional[float]]:
     try:
-        st = p.stat()
+        st = lp_stat(p)
         return st.st_size, st.st_mtime
     except OSError:
         return None, None
 
 
 def same_file_size_and_mtime(src: Path, dst: Path, mtime_tolerance_s: float = 2.0) -> bool:
-    if not dst.exists():
+    if not lp_exists(dst):
         return False
     ss, sm = safe_stat_size_mtime(src)
     ds, dm = safe_stat_size_mtime(dst)
@@ -325,7 +388,7 @@ def partial_hash(file_path: Path, rel_path_str: str, *, blocks: int, block_size:
 
     # Small file: hash full content
     if size <= total_sample or size <= block_size:
-        with open(file_path, "rb") as f:
+        with lp_open(file_path, "rb") as f:
             while True:
                 chunk = f.read(1024 * 1024)
                 if not chunk:
@@ -352,7 +415,7 @@ def partial_hash(file_path: Path, rel_path_str: str, *, blocks: int, block_size:
         for i in range(blocks):
             offsets.add(min(i * step, max_start))
 
-    with open(file_path, "rb") as f:
+    with lp_open(file_path, "rb") as f:
         for off in sorted(offsets):
             f.seek(off)
             h.update(f.read(block_size))
@@ -396,7 +459,7 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
         return {}
 
     mpath = manifest_path(source_root)
-    if not mpath.exists():
+    if not lp_exists(mpath):
         logf(f"[MANIFEST] No manifest found yet: {mpath}")
         return {}
 
@@ -405,7 +468,7 @@ def load_manifest_index(source_root: Path, logf, ignore_manifest: bool) -> Dict[
     total = 0
 
     try:
-        with open(mpath, "r", encoding="utf-8") as f:
+        with lp_open(mpath, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -462,8 +525,8 @@ def append_manifest_record(
         return
 
     try:
-        mdir.mkdir(parents=True, exist_ok=True)
-        with open(mpath, "a", encoding="utf-8", newline="\n") as f:
+        lp_mkdir(mdir)
+        with lp_open(mpath, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         logf(f"[MANIFEST] Appended: {record.get('action')} {record.get('relpath')}")
     except Exception as e:
@@ -491,14 +554,14 @@ def copy_with_retry(
     attempts = 1 + retries
     for attempt in range(1, attempts + 1):
         try:
-            shutil.copy2(str(src), str(dst))
+            shutil.copy2(long_path(src), long_path(dst))
             return None  # success
         except Exception as e:
             last_exc = e
             # Remove partial/empty destination before retrying
             try:
-                if dst.exists():
-                    dst.unlink()
+                if lp_exists(dst):
+                    lp_unlink(dst)
                     logf(f"[CLEANUP] Removed partial destination: {dst}")
             except Exception as ce:
                 logf(f"[WARN] Could not remove partial destination: {dst} ({ce})")
@@ -528,13 +591,13 @@ def move_with_retry(
     attempts = 1 + retries
     for attempt in range(1, attempts + 1):
         try:
-            shutil.move(str(src), str(dst))
+            shutil.move(long_path(src), long_path(dst))
             return None  # success
         except Exception as e:
             last_exc = e
             try:
-                if dst.exists():
-                    dst.unlink()
+                if lp_exists(dst):
+                    lp_unlink(dst)
                     logf(f"[CLEANUP] Removed partial destination: {dst}")
             except Exception as ce:
                 logf(f"[WARN] Could not remove partial destination: {dst} ({ce})")
@@ -568,16 +631,16 @@ def open_log_files(
     src_log_path = source_root / default_log_filename(ts)
     tgt_log_path = target_root / default_log_filename(ts)
 
-    src_handle = open(src_log_path, "a", encoding="utf-8", newline="\n")
+    src_handle = lp_open(src_log_path, "a", encoding="utf-8", newline="\n")
 
     if dry_run:
-        if target_root.exists():
-            tgt_handle = open(tgt_log_path, "a", encoding="utf-8", newline="\n")
+        if lp_exists(target_root):
+            tgt_handle = lp_open(tgt_log_path, "a", encoding="utf-8", newline="\n")
         else:
             tgt_handle = None
     else:
-        target_root.mkdir(parents=True, exist_ok=True)
-        tgt_handle = open(tgt_log_path, "a", encoding="utf-8", newline="\n")
+        lp_mkdir(target_root)
+        tgt_handle = lp_open(tgt_log_path, "a", encoding="utf-8", newline="\n")
 
     return src_handle, tgt_handle, src_log_path, tgt_log_path
 
@@ -678,7 +741,7 @@ def transfer_tree(
 
         # In live mode, ensure target root exists before walking
         if not dry_run:
-            target_dir.mkdir(parents=True, exist_ok=True)
+            lp_mkdir(target_dir)
 
         for root, dirs, files in os.walk(source_dir):
             root_path = Path(root)
@@ -705,15 +768,17 @@ def transfer_tree(
                     continue
 
                 dst_file = out_root / fname
-                
+
                 # --- PATH LENGTH GUARD (warn + skip) ---
-                # Classic Windows APIs can fail beyond ~260 characters. We warn early and skip to avoid hard errors.
+                # All actual file I/O below goes through the lp_*/long_path() \\?\ helpers,
+                # which bypass the classic ~260-char MAX_PATH limit - so this only needs to
+                # catch the (much higher, ~32767) Windows long-path ceiling as a formality.
                 dst_str = str(dst_file)
                 if len(dst_str) > MAX_SAFE_PATH_CHARS:
                     logf(f"[PATH-ERROR] Destination path too long ({len(dst_str)} chars > {MAX_SAFE_PATH_CHARS}). Skipping: {dst_str}")
                     errors += 1
                     continue
-    
+
                 ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
 
                 src_size, src_mtime = safe_stat_size_mtime(src_file)
@@ -736,7 +801,7 @@ def transfer_tree(
                 # --- NEW: cleanup path BEFORE manifest skip ---
                 # If under current rules this file should be MOVED, but it already exists in target,
                 # then delete the source after verifying dst matches src (size + partial hash).
-                if dst_file.exists() and (not overwrite) and do_move:
+                if lp_exists(dst_file) and (not overwrite) and do_move:
                     try:
                         ok = partial_hash_match(
                             src_file, dst_file, rel_path_posix,
@@ -752,7 +817,7 @@ def transfer_tree(
                             logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
                         else:
                             try:
-                                src_file.unlink()
+                                lp_unlink(src_file)
                                 logf(f"[DEL-SRC] {src_file} (dst exists, MOVE-category, partial-hash match)")
                             except Exception as e:
                                 logf(f"[ERROR] Cannot delete source: {src_file} ({e})")
@@ -792,7 +857,7 @@ def transfer_tree(
                     continue
 
                 # Handle existing destination file for COPY-category and MOVE-category.
-                if dst_file.exists():
+                if lp_exists(dst_file):
                     if not do_move:
                         # COPY-category: decide whether to skip or overwrite based on size / mtime.
                         if overwrite:
@@ -806,7 +871,7 @@ def transfer_tree(
                                 logf(f"[DEL ] {dst_file} (--overwrite, dst differs)")
                             else:
                                 try:
-                                    dst_file.unlink()
+                                    lp_unlink(dst_file)
                                     logf(f"[DEL ] {dst_file} (--overwrite, dst differs)")
                                 except Exception as e:
                                     logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
@@ -816,7 +881,7 @@ def transfer_tree(
                             # No --overwrite: skip if dst is at least as large as src (intact or overshoot).
                             # Re-copy if dst is smaller (partial write from a previous failed transfer).
                             try:
-                                dst_size_bytes = dst_file.stat().st_size
+                                dst_size_bytes = lp_stat(dst_file).st_size
                             except Exception:
                                 dst_size_bytes = 0
                             if dst_size_bytes >= src_size:
@@ -833,7 +898,7 @@ def transfer_tree(
                                 logf(f"[DEL ] {dst_file} (--overwrite, MOVE-category)")
                             else:
                                 try:
-                                    dst_file.unlink()
+                                    lp_unlink(dst_file)
                                     logf(f"[DEL ] {dst_file} (--overwrite, MOVE-category)")
                                 except Exception as e:
                                     logf(f"[ERROR] Cannot delete existing dst: {dst_file} ({e})")
@@ -916,7 +981,8 @@ def transfer_tree(
 def main() -> int:
     ap = argparse.ArgumentParser(description="Mirror a source directory tree into a user-defined target root (serverTransfer).")
     ap.add_argument("source", help="Source folder path (Windows path or UNC path).")
-    ap.add_argument("--target-root", required=True, help=r"Target root (e.g. E:\ or \\naskampa\lts\).")
+    ap.add_argument("--target-root", default=None, help=r"Target root (e.g. E:\ or \\naskampa\lts\). Preserves the source's relative path under this root.")
+    ap.add_argument("--target", default=None, help=r"Explicit full target folder path, bypassing automatic path mapping (use when the destination structure doesn't mirror the source's relative path). Exactly one of --target-root/--target is required.")
 
     ap.add_argument("--maxSize", type=float, default=20.0,
                     help="Move files larger than this size (GB). Default: 10")
@@ -948,18 +1014,25 @@ def main() -> int:
 
     args = ap.parse_args()
 
+    if bool(args.target_root) == bool(args.target):
+        print("[ERROR] Provide exactly one of --target-root or --target.")
+        return 2
+
     user_name = getpass.getuser()
 
     src_pw = PureWindowsPath(args.source)
     src = Path(str(src_pw))
 
-    tgt_pw = compute_target_path_server(args.source, args.target_root)
-    tgt = Path(str(tgt_pw))
+    if args.target:
+        tgt = Path(str(PureWindowsPath(args.target)))
+    else:
+        tgt_pw = compute_target_path_server(args.source, args.target_root)
+        tgt = Path(str(tgt_pw))
 
-    if not src.exists():
+    if not lp_exists(src):
         print(f"[ERROR] Source does not exist: {src}")
         return 2
-    if not src.is_dir():
+    if not lp_isdir(src):
         print(f"[ERROR] Source is not a directory: {src}")
         return 2
 
@@ -970,11 +1043,12 @@ def main() -> int:
         print(f"[ERROR] {e}")
         return 2
 
-    # Lock check (optional, re-uses the same lock filename on the target root)
-    target_root_path = Path(str(normalize_target_root(args.target_root)))
+    # Lock check (optional, re-uses the same lock filename on the target root).
+    # With an explicit --target, the target folder itself is the lock-check location.
+    target_root_path = tgt if args.target else Path(str(normalize_target_root(args.target_root)))
     lock_file = target_root_path / LOCK_FILENAME
     forced_by_lock = False
-    if lock_file.exists():
+    if lp_exists(lock_file):
         forced_by_lock = True
         args.dry_run = True
         print(f"[LOCK] Found lock file: {lock_file}")
@@ -989,7 +1063,7 @@ def main() -> int:
 
     print(f"User: {user_name}")
     print(f"Source: {src}")
-    print(f"Target root: {args.target_root}")
+    print(f"Target root: {args.target_root if args.target_root else '<explicit --target>'}")
     print(f"Target: {tgt}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'} | Overwrite: {args.overwrite}")
     if forced_by_lock:
