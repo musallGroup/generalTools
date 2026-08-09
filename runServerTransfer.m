@@ -21,35 +21,26 @@ function [status, cmdout, cmd] = runServerTransfer(sourcePath, targetRoot, varar
 % Optional MATLAB-only name-value options (must come LAST):
 %   'PythonExe' - python executable or full path (default: 'python')
 %   'PrintCmd'  - true/false, print the constructed command (default: true)
-%   'SafeMove'  - true/false (default: false). Runs the two-pass
-%                 copy-then-verified-delete pattern instead of a single
-%                 call, so source files are only ever deleted after their
-%                 copy on the target has been hash-verified:
-%                   Pass 1 (dry-run check): forces a very large --maxSize
-%                     so every file classifies as COPY, and confirms
-%                     nothing would be MOVEd (moved=0, errors=0) before
-%                     any data is touched.
-%                   Pass 1 (live): re-runs the same COPY-only transfer for
-%                     real. Source is left untouched.
-%                   Pass 2 (live): re-runs with --maxSize 0, so every file
-%                     now hits serverTransfer.py's "dst already exists"
-%                     branch, which deletes the source only after a
-%                     partial blake2b hash match against the target.
-%                 --maxSize is meaningless under SafeMove (Pass 1/Pass 2
-%                 each set it internally) and is stripped from the
-%                 forwarded args with a warning if supplied. If --dry-run
-%                 is also given, only the Pass 1 safety check is run and
-%                 reported; nothing is copied, moved, or deleted.
+%   'SafeMove'  - true/false (default: false). Forces --maxSize 0 so every
+%                 file classifies as MOVE-category, safely: serverTransfer.py
+%                 (>= 1.0.4) handles this itself in a single pass via
+%                 move_with_verify() - same-volume moves use an atomic
+%                 os.rename() (no data ever re-read), and cross-volume moves
+%                 copy, hash-verify against the source, and only then delete
+%                 it (retrying once on a verification mismatch before giving
+%                 up with the source left intact). Any --maxSize supplied by
+%                 the caller is stripped with a warning, since SafeMove
+%                 always forces 0. This used to require a manual two/three
+%                 pass dance at this wrapper level (copy-only pass, then a
+%                 separate verified-delete pass) because serverTransfer.py's
+%                 MOVE handling used to call shutil.move() directly with no
+%                 verification; that safety net now lives in the Python
+%                 script itself, so SafeMove is just a single call here.
 %
 % Returns:
-%   status - exit code from system() (default mode); under SafeMove, -1 if
-%            the Pass 1 safety check failed, otherwise the exit code of
-%            the last pass that ran
-%   cmdout - stdout/stderr from python (default mode); under SafeMove, the
-%            concatenated output of every pass that ran, each under a
-%            "===== SafeMove ... =====" header
-%   cmd    - the exact command executed (default mode, char); under
-%            SafeMove, a cell array of the command(s) executed, in order
+%   status - exit code from system()
+%   cmdout - stdout/stderr from python
+%   cmd    - the exact command executed (char)
 %
 % Examples:
 %   [st,out] = runServerTransfer('F:\BpodBehavior\427','E:\', '--dry-run --maxSize 100000');
@@ -116,89 +107,27 @@ if isempty(scriptPath)
 end
 
 % -----------------------------
-% Default (single-pass) mode: unchanged behavior
+% Build the forwarded argument string. SafeMove forces --maxSize 0; every
+% file then classifies as MOVE-category, which serverTransfer.py's
+% move_with_verify() (>= 1.0.4) handles safely in a single pass on its own
+% (see help text above).
 % -----------------------------
-if ~safeMove
-    extra = buildForwardArgString(forwardArgs);
-    [cmd, status, cmdout] = execTransfer(sourcePath, targetRoot, scriptPath, extra, pythonExe, printCmd, '');
-
-    if status ~= 0
-        warning('serverTransfer.py returned non-zero exit status: %d', status);
+if safeMove
+    [tokens, nStripped] = stripFlagWithValue(toTokenList(forwardArgs), '--maxSize');
+    if nStripped > 0
+        warning('runServerTransfer:SafeMoveIgnoresMaxSize', ...
+            '--maxSize is ignored when ''SafeMove'' is true (forced to 0).');
     end
-    return
+    extra = joinTokens([tokens, {'--maxSize', '0'}]);
+else
+    extra = buildForwardArgString(forwardArgs);
 end
 
-% -----------------------------
-% SafeMove mode: two-pass copy-then-verified-delete
-% (see [[project_serverDataStorage]] / vault "Server Management - BRAIN lab"
-% for why a single-pass move is not used: shutil.move copies then deletes
-% with no integrity check on that specific copy before the source is gone)
-% -----------------------------
-tokens = toTokenList(forwardArgs);
+[cmd, status, cmdout] = execTransfer(sourcePath, targetRoot, scriptPath, extra, pythonExe, printCmd, '');
 
-[tokens, nStripped] = stripFlagWithValue(tokens, '--maxSize');
-if nStripped > 0
-    warning('runServerTransfer:SafeMoveIgnoresMaxSize', ...
-        '--maxSize is ignored when ''SafeMove'' is true (Pass 1 uses a large fixed value, Pass 2 uses 0).');
+if status ~= 0
+    warning('serverTransfer.py returned non-zero exit status: %d', status);
 end
-
-userWantsDryRunOnly = hasFlag(tokens, '--dry-run');
-tokens = removeFlag(tokens, '--dry-run');
-
-HUGE_MAXSIZE = '100000';  % GB - larger than any realistic single file; forces COPY-only in Pass 1
-
-% ---- Pass 1 dry-run: confirm HUGE_MAXSIZE is large enough that nothing gets MOVEd ----
-step1DryExtra = joinTokens([tokens, {'--maxSize', HUGE_MAXSIZE, '--dry-run'}]);
-[cmd1, status1, out1] = execTransfer(sourcePath, targetRoot, scriptPath, step1DryExtra, pythonExe, printCmd, ...
-    'SafeMove Pass 1/2 (dry-run check)');
-[moved1, errors1] = parseTransferSummary(out1);
-
-if status1 ~= 0 || isnan(moved1) || isnan(errors1) || errors1 > 0 || moved1 > 0
-    warning('runServerTransfer:SafeMoveCheckFailed', ...
-        ['SafeMove Pass 1 dry-run check failed (exit=%d, moved=%d, errors=%d). Nothing was copied, moved, ' ...
-         'or deleted. moved>0 means some files still classify as MOVE (e.g. via --move-ext/--move-keyword, ' ...
-         'or a file bigger than %s GB) - remove those flags or investigate before retrying SafeMove.'], ...
-        status1, moved1, errors1, HUGE_MAXSIZE);
-    status = -1;
-    cmdout = sprintf('===== SafeMove Pass 1/2 (dry-run check) =====\n%s', out1);
-    cmd = {cmd1};
-    return
-end
-
-if userWantsDryRunOnly
-    fprintf('\nSafeMove preview OK: Pass 1 would COPY all files (moved=0, errors=0). Re-run without --dry-run to execute the safe move.\n');
-    status = 0;
-    cmdout = sprintf('===== SafeMove Pass 1/2 (dry-run check) =====\n%s', out1);
-    cmd = {cmd1};
-    return
-end
-
-% ---- Pass 1 live: copy everything; source untouched ----
-step1LiveExtra = joinTokens([tokens, {'--maxSize', HUGE_MAXSIZE}]);
-[cmd2, status2, out2] = execTransfer(sourcePath, targetRoot, scriptPath, step1LiveExtra, pythonExe, printCmd, ...
-    'SafeMove Pass 1/2 (copy)');
-cmdout = [sprintf('===== SafeMove Pass 1/2 (dry-run check) =====\n%s', out1), ...
-          sprintf('\n===== SafeMove Pass 1/2 (copy) =====\n%s', out2)];
-cmd = {cmd1, cmd2};
-
-if status2 ~= 0
-    warning('runServerTransfer:SafeMovePass1Failed', ...
-        'SafeMove Pass 1 (copy) failed with exit status %d; aborting before Pass 2 (verified delete).', status2);
-    status = status2;
-    return
-end
-
-% ---- Pass 2 live: verified delete (source deleted only on a hash-verified match) ----
-step2Extra = joinTokens([tokens, {'--maxSize', '0'}]);
-[cmd3, status3, out3] = execTransfer(sourcePath, targetRoot, scriptPath, step2Extra, pythonExe, printCmd, ...
-    'SafeMove Pass 2/2 (verified delete)');
-cmdout = [cmdout, sprintf('\n===== SafeMove Pass 2/2 (verified delete) =====\n%s', out3)];
-cmd = {cmd1, cmd2, cmd3};
-
-if status3 ~= 0
-    warning('runServerTransfer:SafeMovePass2Failed', 'SafeMove Pass 2 (verified delete) failed with exit status %d.', status3);
-end
-status = status3;
 
 end
 
@@ -297,24 +226,6 @@ end
 
 
 % =======================================================================
-% Helper: hasFlag
-% =======================================================================
-function tf = hasFlag(tokens, flagName)
-% True if a standalone flag (no value), e.g. '--dry-run', is present.
-tf = any(strcmp(tokens, flagName));
-end
-
-
-% =======================================================================
-% Helper: removeFlag
-% =======================================================================
-function tokens = removeFlag(tokens, flagName)
-% Remove all occurrences of a standalone flag (no value), e.g. '--dry-run'.
-tokens = tokens(~strcmp(tokens, flagName));
-end
-
-
-% =======================================================================
 % Helper: stripFlagWithValue
 % =======================================================================
 function [tokens, nStripped] = stripFlagWithValue(tokens, flagName)
@@ -337,26 +248,6 @@ while i <= numel(tokens)
     end
 end
 tokens = out;
-end
-
-
-% =======================================================================
-% Helper: parseTransferSummary
-% =======================================================================
-function [moved, errors] = parseTransferSummary(cmdout)
-% Parse the "Done. Copied: X | Moved: Y | ... | Errors: E" summary line
-% serverTransfer.py prints at the end of a run. Returns NaN for either
-% value if it could not be found (treated as a failed check by the caller).
-moved = NaN;
-errors = NaN;
-mTok = regexp(cmdout, 'Moved:\s*(\d+)', 'tokens');
-if ~isempty(mTok)
-    moved = str2double(mTok{end}{1});
-end
-eTok = regexp(cmdout, 'Errors:\s*(\d+)', 'tokens');
-if ~isempty(eTok)
-    errors = str2double(eTok{end}{1});
-end
 end
 
 

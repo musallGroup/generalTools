@@ -136,12 +136,19 @@ emptied by the archiving workflow.
 Version history
 ----------------
 1.0.2 (2026-08-05): Normalize naskampa UNC host aliases (\\naskampa vs \\naskampa.kampa-10g) at RWTH server
-
+1.0.3 (2026-08-08): Added move_with_verify(), replacing the previous raw shutil.move() call for
+MOVE-category files. compute_target_path() guarantees source/target are always on the same
+drive/share here, so os.rename() (tried first) is expected to handle every real case - this is
+mainly ported over from serverTransfer.py's move_with_verify() for consistency between the two
+scripts, plus defense-in-depth against a share ever spanning multiple backing volumes under one
+name. Cross-volume fallback (copy, hash-verify, retry once on mismatch, else give up with source
+kept) is unchanged in spirit from before, just no longer trusting shutil.move()'s own copy+delete
+without an independent verification step.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -528,6 +535,71 @@ def append_manifest_record(
 
 
 # ----------------------------
+# Safe move
+# ----------------------------
+def move_with_verify(
+    src: Path,
+    dst: Path,
+    *,
+    rel_path_str: str,
+    sample_blocks: int,
+    block_size: int,
+    logf,
+) -> Optional[Exception]:
+    """
+    Move src to dst safely.
+
+    compute_target_path() always inserts TAPE_TRANSFER right under the
+    source's own drive/share root, so src and dst are guaranteed to be on the
+    same physical volume here - os.rename() (tried first) is atomic and only
+    repoints the directory entry, never touching file content, so this is
+    expected to be the path taken every time in practice. The copy+verify
+    fallback below exists as defense-in-depth (e.g. a share that turns out to
+    span multiple backing volumes under one name) rather than for an actively
+    exercised risk, and keeps this in step with serverTransfer.py's
+    move_with_verify(), which faces the same risk for real since its
+    destination is an independent, user-supplied root.
+
+    Cross-volume fallback: copy, then hash-verify the copy against the source
+    before deleting anything - shutil.copy2() completing without raising is
+    not on its own proof of a correct copy, only that no exception was
+    raised. On a verification mismatch, retry ONCE (delete the bad copy, copy
+    again, verify again); a second consecutive mismatch is treated as a real
+    problem worth surfacing rather than something to retry indefinitely.
+
+    Returns None on success (source has been deleted), or an Exception
+    describing the failure (source is left intact in every failure case).
+    """
+    try:
+        os.rename(str(src), str(dst))
+        return None
+    except OSError:
+        pass  # cross-device (or other rename failure) - fall through to copy+verify+delete
+
+    for attempt in (1, 2):
+        try:
+            shutil.copy2(str(src), str(dst))
+        except Exception as e:
+            return e
+
+        if partial_hash_match(src, dst, rel_path_str, blocks=sample_blocks, block_size=block_size):
+            src.unlink()
+            return None
+
+        logf(f"[WARN] Verification mismatch after copy (attempt {attempt}/2): {src} -> {dst}")
+        try:
+            if dst.exists():
+                dst.unlink()
+        except Exception as ce:
+            logf(f"[WARN] Could not remove mismatched destination: {dst} ({ce})")
+
+    return RuntimeError(
+        f"Copy succeeded but failed content verification twice in a row - "
+        f"source kept, destination removed: {src}"
+    )
+
+
+# ----------------------------
 # Logging helpers
 # ----------------------------
 def timestamp_for_log() -> str:
@@ -779,13 +851,17 @@ def transfer_tree(
                     if dry_run:
                         logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                     else:
-                        try:
-                            shutil.move(str(src_file), str(dst_file))
-                            logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
-                        except Exception as e:
-                            logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({e})")
+                        exc = move_with_verify(
+                            src_file, dst_file,
+                            rel_path_str=rel_path_posix,
+                            sample_blocks=sample_blocks, block_size=block_size,
+                            logf=logf,
+                        )
+                        if exc is not None:
+                            logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({exc})")
                             errors += 1
                             continue
+                        logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB, verified)")
                     moved += 1
 
                     rec = {

@@ -36,6 +36,15 @@ Examples (PowerShell)
 5) Ignore manifest (force re-staging checks off):
    python serverTransfer.py "D:\data\run1" --target-root "E:\" --ignore-manifest
 
+6) Explicit destination path (--target instead of --target-root), for when the destination
+   structure doesn't mirror the source's relative path:
+   python serverTransfer.py "\\naskampa\lts\invivo_ephys\PNPdata" --target "\\naskampa\lts\Projects\PNPanalysis\PNPdata"
+
+7) Safe move everything (--maxSize 0 forces every file to MOVE-category; move_with_verify()
+   handles this safely on its own - same-volume via an atomic os.rename(), cross-volume via
+   copy-then-hash-verify-then-delete, so no separate "safe move" flag or two-pass dance is needed):
+   python serverTransfer.py "D:\\UbuntuRecovery" --target-root "\\naskampa\lts\" --maxSize 0
+
 
 Version history
 ----------------
@@ -574,40 +583,67 @@ def copy_with_retry(
     return last_exc
 
 
-def move_with_retry(
+def move_with_verify(
     src: Path,
     dst: Path,
     *,
+    rel_path_str: str,
     retries: int,
     retry_delay_s: float,
+    sample_blocks: int,
+    block_size: int,
     logf,
 ) -> Optional[Exception]:
     """
-    Attempt shutil.move(src, dst) up to (1 + retries) times.
-    On each failure the partial destination is removed; the source is left intact.
-    Returns None on success, or the last exception if all attempts fail.
+    Move src to dst safely, freeing source space as soon as each file is
+    confirmed intact (rather than only after a whole separate verification
+    pass over the tree).
+
+    Same-volume case: os.rename() is tried first. It only repoints the
+    directory entry - file content is never read or rewritten - so it's
+    atomic and needs no verification. This mirrors what shutil.move() already
+    does internally (try rename, fall back to copy+delete); we do it
+    explicitly here so we control the fallback instead of shutil.move()'s own
+    unverified copy+delete.
+
+    Cross-volume case (rename fails, e.g. WinError 17): copy (via the
+    existing copy_with_retry(), which already retries on exceptions such as
+    transient network faults), then hash-verify the copy against the source
+    before deleting anything. A copy2() call completing without raising is
+    not on its own proof of a correct copy - it only means no exception was
+    raised, which doesn't rule out rare silent corruption. On a verification
+    mismatch, retry ONCE (delete the bad copy, copy again, verify again) - a
+    second consecutive mismatch is treated as a real problem worth surfacing
+    rather than something to retry indefinitely.
+
+    Returns None on success (source has been deleted), or an Exception
+    describing the failure (source is left intact in every failure case).
     """
-    last_exc: Optional[Exception] = None
-    attempts = 1 + retries
-    for attempt in range(1, attempts + 1):
+    try:
+        os.rename(long_path(src), long_path(dst))
+        return None
+    except OSError:
+        pass  # cross-device (or other rename failure) - fall through to copy+verify+delete
+
+    for attempt in (1, 2):
+        exc = copy_with_retry(src, dst, retries=retries, retry_delay_s=retry_delay_s, logf=logf)
+        if exc is not None:
+            return exc
+
+        if partial_hash_match(src, dst, rel_path_str, blocks=sample_blocks, block_size=block_size):
+            lp_unlink(src)
+            return None
+
+        logf(f"[WARN] Verification mismatch after copy (attempt {attempt}/2): {src} -> {dst}")
         try:
-            shutil.move(long_path(src), long_path(dst))
-            return None  # success
-        except Exception as e:
-            last_exc = e
-            try:
-                if lp_exists(dst):
-                    lp_unlink(dst)
-                    logf(f"[CLEANUP] Removed partial destination: {dst}")
-            except Exception as ce:
-                logf(f"[WARN] Could not remove partial destination: {dst} ({ce})")
+            lp_unlink(dst)
+        except Exception as ce:
+            logf(f"[WARN] Could not remove mismatched destination: {dst} ({ce})")
 
-            if attempt < attempts:
-                logf(f"[RETRY] MOVE attempt {attempt}/{attempts} failed: {src} ({e}). "
-                     f"Retrying in {retry_delay_s}s...")
-                time.sleep(retry_delay_s)
-
-    return last_exc
+    return RuntimeError(
+        f"Copy succeeded but failed content verification twice in a row - "
+        f"source kept, destination removed: {src}"
+    )
 
 
 # ----------------------------
@@ -910,15 +946,18 @@ def transfer_tree(
                     if dry_run:
                         logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
                     else:
-                        exc = move_with_retry(
+                        exc = move_with_verify(
                             src_file, dst_file,
-                            retries=retries, retry_delay_s=retry_delay_s, logf=logf,
+                            rel_path_str=rel_path_posix,
+                            retries=retries, retry_delay_s=retry_delay_s,
+                            sample_blocks=sample_blocks, block_size=block_size,
+                            logf=logf,
                         )
                         if exc is not None:
                             logf(f"[ERROR] MOVE failed: {src_file} -> {dst_file} ({exc})")
                             errors += 1
                             continue
-                        logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
+                        logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB, verified)")
                     moved += 1
 
                     # Manifest record for MOVE
