@@ -51,14 +51,16 @@ for iPath = 1:numel(targetPaths)
         cFolder = fullfile(basePath, cSessions(j).name);
         fprintf('Session (%d/%d): %s\n', j, numel(cSessions), cSessions(j).name);
 
-        % Skip if suite2p has not run
-        if ~isfolder(fullfile(cFolder, 'suite2p'))
+        % Skip if suite2p has not run (searched recursively - suite2p output isn't always
+        % directly inside the session folder, e.g. it can be one level deeper per-recording)
+        s2pMatches = dir(fullfile(cFolder, '**', 'suite2p'));
+        if isempty(s2pMatches) || ~any([s2pMatches.isdir])
             disp('  Skipping: no suite2p output.');
             continue;
         end
 
-        % Skip if trigger file is missing
-        if ~ignoreTrigDat && isempty(dir(fullfile(cFolder, '*_trigDat.mat')))
+        % Skip if trigger file is missing (also searched recursively, same reasoning)
+        if ~ignoreTrigDat && isempty(dir(fullfile(cFolder, '**', '*_trigDat.mat')))
             disp('  Skipping: trigger file missing.');
             continue;
         end
@@ -78,11 +80,28 @@ for iPath = 1:numel(targetPaths)
             fprintf('  Compressing: %s (%.1f GB)\n', tifFiles(k).name, tifFiles(k).bytes / 1024^3);
 
             if ~dryRun
+                % Compress into a disposable temp path rather than the final .7z name, so a
+                % stale/corrupted leftover archive from an interrupted prior attempt is never
+                % touched until a verified-good replacement exists - this also means a corrupted
+                % source TIF can never cost us an already-good archive: on failure below, the
+                % old .7z (if any) is left completely untouched.
+                [~,~,fileEnd] = fileparts(cFile);
+                zipPath = strrep(cFile, fileEnd, '.7z');
+                tempZipPath = [zipPath '.tmp'];
+                if exist(tempZipPath, 'file')
+                    delete(tempZipPath); % always disposable - never a verified result
+                end
+
                 tic;
-                [integrityCheck, ~] = compressTIFwith7zip(cFile);
+                [integrityCheck, ~] = compressTIFwith7zip(cFile, tempZipPath);
                 toc;
 
                 if integrityCheck
+                    if exist(zipPath, 'file')
+                        delete(zipPath);
+                    end
+                    movefile(tempZipPath, zipPath);
+
                     disp('  Compression successful. Deleting original TIF.');
                     delete(cFile);
                     if exist(cFile, 'file')
@@ -90,6 +109,9 @@ for iPath = 1:numel(targetPaths)
                     end
                 else
                     fprintf('  WARNING: Compression failed for %s. Original TIF kept.\n', tifFiles(k).name);
+                    if exist(tempZipPath, 'file')
+                        delete(tempZipPath);
+                    end
                 end
             else
                 fprintf('  [DRY RUN] Would compress and delete: %s\n', cFile);
