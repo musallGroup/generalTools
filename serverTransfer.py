@@ -97,10 +97,7 @@ manual review - it does not delete or replace anything automatically.
 inline log lines that are easy to miss in a long transfer log. Added "Mismatched" and
 "Suspected-truncated" counters to the final summary line (both the in-log [INFO] line and the
 console "Done." line), plus an explicit "review recommended" call-to-action line whenever either
-count is nonzero - a bare number next to "Errors: 0" is too easy to skim past. MINOR, not PATCH:
-unlike the two entries above (which only add conditional, easy-to-ignore log lines), this changes
-the fixed set of fields present in the summary line on every run - new additive fields in an
-always-emitted output contract, per [[feedback_semver_versioning]].
+count is nonzero - a bare number next to "Errors: 0" is too easy to skim past.
 """
 
 from __future__ import annotations
