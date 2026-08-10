@@ -80,11 +80,17 @@ from 240 to 32000 (the real Windows long-path ceiling) since it's no longer need
 guard - kept only as a formality against pathological cases. Surfaced by a PNPdata migration where
 ~2401 files (SpikeInterface/OpenEphys/phy outputs, some genuine primary data, not just cache) were
 being silently skipped under the old guard.
+1.0.5 (2026-08-10): A 0-byte MOVE-category destination is now treated as corrupt and replaced
+unconditionally (regardless of --overwrite), instead of falling into the "dst exists but does NOT
+match (kept src)" skip. A destination that's empty while the source isn't is never a legitimate
+content difference - it's a prior transfer that was interrupted or otherwise failed to write - and
+the old behavior left it broken forever, since re-running never revisits a mismatched-but-existing
+destination. Found via 2 zero-byte .avi files on naskampa after a BpodBehavior transfer.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -833,6 +839,27 @@ def transfer_tree(
                     move_exts=move_exts,
                     move_keywords=move_keywords,
                 )
+
+                # --- NEW: treat a 0-byte destination as corrupt, not a legitimate mismatch ---
+                # A MOVE-category destination is never legitimately empty when the source isn't,
+                # so replace it unconditionally (regardless of --overwrite) instead of letting it
+                # fall into the "kept src" mismatch skip below, which would leave it broken forever.
+                if lp_exists(dst_file) and do_move and int(src_size) > 0:
+                    try:
+                        dst_size_for_empty_check = lp_stat(dst_file).st_size
+                    except Exception:
+                        dst_size_for_empty_check = None
+                    if dst_size_for_empty_check == 0:
+                        if dry_run:
+                            logf(f"[DEL ] {dst_file} (empty destination, treated as corrupt, will re-copy)")
+                        else:
+                            try:
+                                lp_unlink(dst_file)
+                                logf(f"[DEL ] {dst_file} (empty destination, treated as corrupt, will re-copy)")
+                            except Exception as e:
+                                logf(f"[ERROR] Cannot delete empty dst: {dst_file} ({e})")
+                                errors += 1
+                                continue
 
                 # --- NEW: cleanup path BEFORE manifest skip ---
                 # If under current rules this file should be MOVED, but it already exists in target,

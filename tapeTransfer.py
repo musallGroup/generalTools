@@ -60,7 +60,10 @@ If destination file already exists:
         - Otherwise skip (mismatch), leaving both untouched.
 
     * MOVE-category files:
-        - If destination exists, we do NOT move again.
+        - If destination exists and is 0 bytes (while source is not), it's treated as a corrupt/
+          interrupted prior transfer and replaced unconditionally - this check runs regardless of
+          --overwrite, since an empty destination is never a legitimate content difference.
+        - Otherwise, if destination exists, we do NOT move again.
         - Instead, we DELETE the SOURCE file ONLY if we can verify destination == source via:
             (1) same file size AND
             (2) deterministic partial-hash match (default ~1 MB sampled across the file)
@@ -144,11 +147,16 @@ scripts, plus defense-in-depth against a share ever spanning multiple backing vo
 name. Cross-volume fallback (copy, hash-verify, retry once on mismatch, else give up with source
 kept) is unchanged in spirit from before, just no longer trusting shutil.move()'s own copy+delete
 without an independent verification step.
+1.0.4 (2026-08-10): A 0-byte MOVE-category destination is now treated as corrupt and replaced
+unconditionally (regardless of --overwrite), instead of falling into the "dst exists but does NOT
+match (kept src)" skip. Ported from serverTransfer.py 1.0.5 for consistency - see that changelog
+entry for the rationale (a 0-byte destination while source is non-empty is never a legitimate
+content difference, and the old behavior left it broken forever on reruns).
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -786,6 +794,27 @@ def transfer_tree(
                     move_exts=move_exts,
                     move_keywords=move_keywords,
                 )
+
+                # --- NEW: treat a 0-byte destination as corrupt, not a legitimate mismatch ---
+                # A MOVE-category destination is never legitimately empty when the source isn't,
+                # so replace it unconditionally (regardless of --overwrite) instead of letting it
+                # fall into the "kept src" mismatch skip below, which would leave it broken forever.
+                if dst_file.exists() and do_move and int(src_size) > 0:
+                    try:
+                        dst_size_for_empty_check = dst_file.stat().st_size
+                    except Exception:
+                        dst_size_for_empty_check = None
+                    if dst_size_for_empty_check == 0:
+                        if dry_run:
+                            logf(f"[DEL ] {dst_file} (empty destination, treated as corrupt, will re-copy)")
+                        else:
+                            try:
+                                dst_file.unlink()
+                                logf(f"[DEL ] {dst_file} (empty destination, treated as corrupt, will re-copy)")
+                            except Exception as e:
+                                logf(f"[ERROR] Cannot delete empty dst: {dst_file} ({e})")
+                                errors += 1
+                                continue
 
                 if dst_file.exists() and (not overwrite) and do_move:
                     try:
