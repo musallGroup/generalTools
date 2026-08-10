@@ -2,23 +2,27 @@ function compressComplete2pSessions(targetPaths, varargin)
 % Compress large TIF files in completed 2-photon session folders.
 %
 % A session is considered complete when both a suite2p output folder and a
-% *_trigDat.mat file are present. Only TIF files larger than minSize_GB are
-% compressed. The original TIF is deleted after a successful integrity check.
+% *_trigDat.mat file are present (unless ignoreTrigDat is set). Only TIF
+% files larger than minSize_GB are compressed. The original TIF is deleted
+% after a successful integrity check.
 %
 % Usage:
 %   compressComplete2pSessions('F:\2p_PuffyPenguin\479')
 %   compressComplete2pSessions({'F:\2p_PuffyPenguin\479', 'F:\2p_PuffyPenguin\480'})
 %   compressComplete2pSessions(paths, 'dryRun', true)
 %   compressComplete2pSessions(paths, 'minSize_GB', 2)
+%   compressComplete2pSessions(paths, 'ignoreTrigDat', true)
 
 p = inputParser;
 addRequired(p,  'targetPaths');
-addParameter(p, 'dryRun',     false);
-addParameter(p, 'minSize_GB', 1);
+addParameter(p, 'dryRun',        false);
+addParameter(p, 'minSize_GB',    1);
+addParameter(p, 'ignoreTrigDat', false);
 parse(p, targetPaths, varargin{:});
 
-dryRun     = p.Results.dryRun;
-minSize_GB = p.Results.minSize_GB;
+dryRun        = p.Results.dryRun;
+minSize_GB    = p.Results.minSize_GB;
+ignoreTrigDat = p.Results.ignoreTrigDat;
 
 if ischar(targetPaths)
     targetPaths = {targetPaths};
@@ -54,14 +58,14 @@ for iPath = 1:numel(targetPaths)
         end
 
         % Skip if trigger file is missing
-        if isempty(dir(fullfile(cFolder, '*_trigDat.mat')))
+        if ~ignoreTrigDat && isempty(dir(fullfile(cFolder, '*_trigDat.mat')))
             disp('  Skipping: trigger file missing.');
             continue;
         end
 
-        % Find large TIF files
+        % Find large TIF files (dir() is case-insensitive on Windows, so '*.tif' alone already
+        % matches '.TIF' too - scanning both patterns separately would double-count every file)
         tifFiles = dir(fullfile(cFolder, '**', '*.tif'));
-        tifFiles = [tifFiles; dir(fullfile(cFolder, '**', '*.TIF'))]; %#ok<AGROW>
         tifFiles = tifFiles([tifFiles.bytes] > 1024^3 * minSize_GB);
 
         if isempty(tifFiles)
