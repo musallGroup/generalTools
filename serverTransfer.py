@@ -86,11 +86,26 @@ match (kept src)" skip. A destination that's empty while the source isn't is nev
 content difference - it's a prior transfer that was interrupted or otherwise failed to write - and
 the old behavior left it broken forever, since re-running never revisits a mismatched-but-existing
 destination. Found via 2 zero-byte .avi files on naskampa after a BpodBehavior transfer.
+1.0.6 (2026-08-10): Added a diagnostic-only check (has_all_zero_tail()) alongside the existing
+"dst exists but does NOT match" skip: if the trailing 1 MiB of a mismatched destination is entirely
+zero bytes, log a [WARN]. Covers a truncation pattern the 0-byte check above can't catch - a file
+pre-allocated to its full size, partially written, then interrupted, leaving real content at the
+start and zero-padding at the end (still a nonzero, "mismatched" file overall, not empty). This is
+a heuristic, not proof (legitimate content can end in zero bytes), so it only surfaces a warning for
+manual review - it does not delete or replace anything automatically.
+1.1.0 (2026-08-10): Mismatch counts now surface in the run summary instead of only appearing as
+inline log lines that are easy to miss in a long transfer log. Added "Mismatched" and
+"Suspected-truncated" counters to the final summary line (both the in-log [INFO] line and the
+console "Done." line), plus an explicit "review recommended" call-to-action line whenever either
+count is nonzero - a bare number next to "Errors: 0" is too easy to skim past. MINOR, not PATCH:
+unlike the two entries above (which only add conditional, easy-to-ignore log lines), this changes
+the fixed set of fields present in the summary line on every run - new additive fields in an
+always-emitted output contract, per [[feedback_semver_versioning]].
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.5"
+__version__ = "1.1.0"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -438,6 +453,37 @@ def partial_hash(file_path: Path, rel_path_str: str, *, blocks: int, block_size:
     return h.hexdigest()
 
 
+TRAILING_ZERO_CHECK_BYTES = 1_048_576  # 1 MiB
+
+
+def has_all_zero_tail(path: Path, check_bytes: int = TRAILING_ZERO_CHECK_BYTES) -> bool:
+    """
+    Heuristic check for a pre-allocated-but-never-fully-written file: reads up to
+    `check_bytes` from the END of the file and reports whether every byte in that
+    window is 0x00. Flags (but does not resolve) a common truncation pattern for
+    large sequential-write formats (.avi/.dat/etc): the OS pre-allocates the full
+    file size, then the transfer is interrupted before the tail is actually
+    written, leaving real content at the start and zero-padding at the end.
+    Not proof on its own - some genuine content legitimately ends in zero bytes -
+    so this is only ever surfaced as a warning for manual review, never used to
+    auto-delete/auto-repair (unlike the whole-file-empty case above).
+    """
+    try:
+        size = lp_stat(path).st_size
+    except Exception:
+        return False
+    if size == 0:
+        return False  # whole-file-empty case is handled separately, not here
+    n = min(check_bytes, size)
+    try:
+        with lp_open(path, "rb") as f:
+            f.seek(size - n)
+            tail = f.read(n)
+    except Exception:
+        return False
+    return len(tail) == n and tail.count(0) == n
+
+
 def partial_hash_match(src: Path, dst: Path, rel_path_str: str, blocks: int, block_size: int) -> bool:
     ss, _ = safe_stat_size_mtime(src)
     ds, _ = safe_stat_size_mtime(dst)
@@ -708,15 +754,17 @@ def transfer_tree(
     ignore_manifest: bool,
     retries: int,
     retry_delay_s: float,
-) -> Tuple[int, int, int, int, int, int, Path, Path]:
+) -> Tuple[int, int, int, int, int, int, int, int, Path, Path]:
     """
     Returns:
-      (copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path)
+      (copied, moved, deleted_src, skipped_manifest, skipped_existing, mismatched,
+       suspected_truncated, errors, src_log_path, tgt_log_path)
     """
     max_bytes = int(max_size_gb * 1024**3)
     block_size = sample_block_kb * 1024
 
     copied = moved = deleted_src = skipped_manifest = skipped_existing = errors = 0
+    mismatched = suspected_truncated = 0
 
     ts = timestamp_for_log()
     src_log_handle, tgt_log_handle, src_log_path, tgt_log_path = open_log_files(
@@ -907,7 +955,14 @@ def transfer_tree(
                             continue
                     else:
                         # dst exists but mismatch -> do NOT delete source
+                        mismatched += 1
                         logf(f"[SKIP] dst exists but does NOT match (kept src): {dst_file}")
+                        if has_all_zero_tail(dst_file):
+                            suspected_truncated += 1
+                            logf(
+                                f"[WARN] Possible truncated transfer - trailing "
+                                f"{TRAILING_ZERO_CHECK_BYTES} bytes of dst are all zero: {dst_file}"
+                            )
                         continue
 
                 # --- Manifest-based skip (only for staging actions) ---
@@ -1033,9 +1088,18 @@ def transfer_tree(
         logf("-" * 110)
         logf(f"[INFO] Done: {datetime.now().isoformat(timespec='seconds')}")
         logf(f"[INFO] Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | "
-             f"Skipped(manifest): {skipped_manifest} | Skipped(existing): {skipped_existing} | Errors: {errors}")
+             f"Skipped(manifest): {skipped_manifest} | Skipped(existing): {skipped_existing} | "
+             f"Mismatched: {mismatched} | Suspected-truncated: {suspected_truncated} | Errors: {errors}")
+        # Counts alone are easy to skim past in a long log - a mismatch or suspected-truncation is
+        # worth an explicit call-to-action line, not just a number next to "Errors: 0".
+        if mismatched > 0:
+            logf(f"[INFO] {mismatched} file(s) kept source due to a source/destination mismatch - review recommended.")
+        if suspected_truncated > 0:
+            logf(f"[WARN] {suspected_truncated} of those mismatch(es) look like truncated transfers "
+                 f"(all-zero tail) - review recommended.")
 
-        return copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path
+        return (copied, moved, deleted_src, skipped_manifest, skipped_existing,
+                mismatched, suspected_truncated, errors, src_log_path, tgt_log_path)
 
     finally:
         if src_log_handle:
@@ -1143,7 +1207,8 @@ def main() -> int:
     print(f"Manifest: {manifest_path(src)} ({'ignored' if args.ignore_manifest else 'active'})")
     print("-" * 110)
 
-    copied, moved, deleted_src, skipped_manifest, skipped_existing, errors, src_log_path, tgt_log_path = transfer_tree(
+    (copied, moved, deleted_src, skipped_manifest, skipped_existing,
+     mismatched, suspected_truncated, errors, src_log_path, tgt_log_path) = transfer_tree(
         source_dir=src,
         target_dir=tgt,
         max_size_gb=args.maxSize,
@@ -1164,7 +1229,12 @@ def main() -> int:
 
     print("-" * 110)
     print(f"Done. Copied: {copied} | Moved: {moved} | Deleted-src: {deleted_src} | "
-          f"Skipped(manifest): {skipped_manifest} | Errors: {errors}")
+          f"Skipped(manifest): {skipped_manifest} | Mismatched: {mismatched} | "
+          f"Suspected-truncated: {suspected_truncated} | Errors: {errors}")
+    if mismatched > 0:
+        print(f"{mismatched} file(s) kept source due to a source/destination mismatch - review recommended.")
+    if suspected_truncated > 0:
+        print(f"{suspected_truncated} of those mismatch(es) look like truncated transfers (all-zero tail) - review recommended.")
     print(f"Source log: {src_log_path}")
     print(f"Target log: {tgt_log_path} (may not exist in dry-run if target folder doesn't exist)")
     print(f"Manifest: {manifest_path(src)}")
