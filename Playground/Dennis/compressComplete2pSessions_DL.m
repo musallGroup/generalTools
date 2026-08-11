@@ -33,6 +33,10 @@ function compressComplete2pSessions_DL(targetPaths, varargin)
 %   compressComplete2pSessions_DL(paths, 'ignoreTrigDat', true)
 %   compressComplete2pSessions_DL(paths, 'algorithm', 'Bitcomp')
 %   compressComplete2pSessions_DL(paths, 'pythonPath', '/home/user/nvcomp-env/bin/python')
+%   compressComplete2pSessions_DL(paths, 'verifyTier', 'quick')  % see gpuCompressTIFwithNvcomp.m
+    % for the safety tradeoff - 'full' (default) is the only tier used in production; 'quick'/
+    % 'memory' trade away on-disk verification for speed and should only be used deliberately,
+    % on data you can afford to lose if wrong.
 
 p = inputParser;
 addRequired(p,  'targetPaths');
@@ -43,6 +47,8 @@ addParameter(p, 'algorithm',     'Zstd'); % nvCOMP codec: 'Zstd', 'Bitcomp', 'GD
 addParameter(p, 'pythonPath',    'python'); % python executable with nvcomp installed - MATLAB's
     % system() calls don't reliably inherit shell PATH edits (e.g. venv activation), so pass an
     % absolute path here (e.g. '/home/user/nvcomp-env/bin/python') if 'python' isn't found.
+addParameter(p, 'verifyTier',    'full'); % 'full' (default, only tier used in production),
+    % 'quick', or 'memory' - see gpuCompressTIFwithNvcomp.m
 parse(p, targetPaths, varargin{:});
 
 dryRun        = p.Results.dryRun;
@@ -50,6 +56,7 @@ minSize_GB    = p.Results.minSize_GB;
 ignoreTrigDat = p.Results.ignoreTrigDat;
 algorithm     = p.Results.algorithm;
 pythonPath    = p.Results.pythonPath;
+verifyTier    = p.Results.verifyTier;
 
 if ischar(targetPaths)
     targetPaths = {targetPaths};
@@ -152,7 +159,7 @@ for idx = 1:nTotal
     end
 
     fileTimer = tic;
-    [integrityCheck, ~] = gpuCompressTIFwithNvcomp(cFile, tempZipPath, algorithm, pythonPath);
+    [integrityCheck, ~, verifiedOnDisk] = gpuCompressTIFwithNvcomp(cFile, tempZipPath, algorithm, pythonPath, verifyTier);
     fprintf('  File time: %s\n', formatDuration(toc(fileTimer)));
 
     if integrityCheck
@@ -161,6 +168,10 @@ for idx = 1:nTotal
         end
         movefile(tempZipPath, zipPath);
 
+        if ~verifiedOnDisk
+            fprintf(['  !!!! DELETING ORIGINAL WITHOUT ON-DISK VERIFICATION (verifyTier=''%s'') - ' ...
+                'archive was only checked in memory before writing, not re-read from disk. !!!!\n'], verifyTier);
+        end
         disp('  Compression successful. Deleting original TIF.');
         delete(cFile);
         if exist(cFile, 'file')
