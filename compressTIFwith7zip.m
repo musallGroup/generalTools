@@ -32,7 +32,7 @@ function [integrityCheck,zipOutputPath] = compressTIFwith7zip(tifFilePath, zipOu
         [compressStatus, compressResult] = system(compressCmd);
     end
 
-    [~,tifFile] = fileparts(zipOutputPath);
+    [~,tifFile] = fileparts(tifFilePath);
     if compressStatus == 0
         fprintf('Compression successful: %s.tif\n', tifFile);
     else
