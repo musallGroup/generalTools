@@ -126,6 +126,9 @@ end
 nTotal = numel(queue);
 if nTotal == 0
     disp('No large TIF files found to compress.');
+    disp('Done: 0/0 file(s) - nothing to do.'); % explicit sentinel so an orchestrating
+        % wrapper can tell "genuinely nothing to compress" apart from a silently-dropped
+        % network mount, which would also make every isfolder() check false and land here
     return;
 end
 fprintf('\nFound %d file(s) to compress (%.1f GB total).\n', nTotal, sum([queue.bytes]) / 1024^3);
@@ -159,7 +162,15 @@ for idx = 1:nTotal
     end
 
     fileTimer = tic;
-    [integrityCheck, ~, verifiedOnDisk] = gpuCompressTIFwithNvcomp(cFile, tempZipPath, algorithm, pythonPath, verifyTier);
+    try
+        [integrityCheck, ~, verifiedOnDisk] = gpuCompressTIFwithNvcomp(cFile, tempZipPath, algorithm, pythonPath, verifyTier);
+    catch err
+        % One dedicated, greppable marker for an orchestrating wrapper to detect a genuine
+        % per-file failure (vs. an apparent crash of the whole process) - does not change
+        % control flow, still aborts the remaining batch exactly as before.
+        fprintf(2, 'FATAL_FILE_FAILURE | file=%s | %s\n', cFile, err.message);
+        rethrow(err);
+    end
     fprintf('  File time: %s\n', formatDuration(toc(fileTimer)));
 
     if integrityCheck

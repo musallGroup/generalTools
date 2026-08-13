@@ -54,10 +54,10 @@ decode at all, not just an optimization - the same explicit-boundary scheme
 is used uniformly for every algorithm rather than special-casing.
 
 Two-stage integrity model, controlled by `verify_tier` (compress() only):
-  - Every compress() call does a mandatory in-memory decode-and-compare
-    right after encoding, before anything is written to disk. This is free
-    (no I/O) and catches encode-logic bugs; compression is refused
-    (COMPRESSION_FAIL, nothing written) if it doesn't match.
+  - Every compress() call does a mandatory in-memory decode-and-compare of
+    EACH chunk right after encoding it, before that chunk is trusted. This
+    is free (no extra I/O) and catches encode-logic bugs; compression is
+    refused (COMPRESSION_FAIL, nothing left on disk) on the first bad chunk.
   - After writing, `verify_tier` controls how much of the on-disk archive
     gets re-checked:
       'full'   (default) - reread the whole archive from disk and fully
@@ -78,6 +78,23 @@ Two-stage integrity model, controlled by `verify_tier` (compress() only):
   `7z t` only tests the archive - so they always do a full decode; a
   meaningful "quick" check isn't possible without the original bytes to
   compare against, so it isn't offered there.
+
+Streaming (required for files larger than available RAM): compress(),
+decompress(), verify(), and the 'full' verify tier all read/write/decode ONE
+CHUNK at a time from/to disk - never the whole file as a single in-memory
+object. This is not an optimization, it's a correctness requirement,
+confirmed the hard way: a 107 GB real ScanImage TIF on a 60 GB RAM machine
+silently OOM-killed the original whole-file-in-memory implementation with no
+graceful error at all (an empty error message - a SIGKILL gives no chance to
+report anything). The original file is read directly from disk in
+chunk-sized pieces (never `Path(in_path).read_bytes()`), SHA-256 is computed
+incrementally via `hashlib`'s streaming `.update()` API rather than over one
+big buffer, and the archive header (which needs each chunk's compressed
+size, only known after encoding it) is written as a same-length placeholder
+first and overwritten in place once the real values are known - avoiding a
+second pass over the payload. Peak memory use is therefore bounded by chunk
+size (at most 512 MB - see _encode_chunk_size()), regardless of whether the
+file is 4 GB or 400 GB.
 """
 
 import sys
@@ -210,67 +227,91 @@ def _cpu_decode_chunks(chunk_payloads, algorithm, orig_size):
                      for payload, sz in zip(chunk_payloads, chunk_orig_sizes))
 
 
-def _decode_chunk_payloads(chunk_payloads, algorithm, orig_size, force_cpu=False):
-    """Decode a list of already-in-memory chunk payloads - GPU if available,
-    unless force_cpu, automatically falling back to CPU when nvcomp/CUDA
-    isn't importable (e.g. no GPU on this machine)."""
-    if force_cpu:
-        return _cpu_decode_chunks(chunk_payloads, algorithm, orig_size)
-    try:
-        from nvidia import nvcomp  # noqa: F401
-    except ImportError:
-        return _cpu_decode_chunks(chunk_payloads, algorithm, orig_size)
-    return _gpu_decode_chunks(chunk_payloads, algorithm)
-
-
-def _decode_archive(archive_path, force_cpu=False):
-    """Full read-from-disk decode, used by verify()/decompress() and the
-    'full' verify tier - the only path that validates the bytes actually
-    persisted on disk."""
+def _stream_decode_archive(archive_path, sink, force_cpu=False):
+    """Decode archive_path chunk-by-chunk, calling sink(chunk_bytes) for each
+    decoded chunk instead of ever accumulating the whole file in memory -
+    critical for files larger than available RAM (see module docstring).
+    Used by verify()/decompress() and the 'full' verify tier - the only path
+    that validates the bytes actually persisted on disk. Returns
+    (total_decoded_size, algorithm, orig_size, checksum) from the header."""
     with open(archive_path, 'rb') as f:
         algorithm, orig_size, checksum, chunk_sizes = _read_header(f)
-        chunk_payloads = [f.read(cs) for cs in chunk_sizes]
-    decoded = _decode_chunk_payloads(chunk_payloads, algorithm, orig_size, force_cpu=force_cpu)
-    return decoded, orig_size, checksum
+
+        use_cpu = force_cpu
+        if not use_cpu:
+            try:
+                from nvidia import nvcomp  # noqa: F401
+            except ImportError:
+                use_cpu = True
+        if not use_cpu:
+            codec = _gpu_codec(algorithm)
+
+        chunk_orig_sizes = [end - start for start, end in
+                             _chunk_bounds(orig_size, _encode_chunk_size(algorithm))]
+        if len(chunk_orig_sizes) != len(chunk_sizes):
+            raise ValueError(
+                f'Archive header has {len(chunk_sizes)} chunks but {algorithm} at '
+                f'orig_size={orig_size} implies {len(chunk_orig_sizes)} - archive is '
+                'corrupt, truncated, or from an incompatible version')
+
+        total_decoded = 0
+        for comp_size, orig_chunk_size in zip(chunk_sizes, chunk_orig_sizes):
+            payload = f.read(comp_size)
+            if len(payload) != comp_size:
+                raise IOError(f'short read: expected {comp_size} bytes, got {len(payload)} '
+                               '(archive truncated?)')
+            if use_cpu:
+                decoded_chunk = _cpu_decode_one(payload, algorithm, orig_chunk_size)
+            else:
+                from nvidia import nvcomp
+                compressed_arr = nvcomp.as_array(payload).cuda()
+                decoded_chunk = bytes(codec.decode(compressed_arr).cpu())
+            sink(decoded_chunk)
+            total_decoded += len(decoded_chunk)
+
+    return total_decoded, algorithm, orig_size, checksum
 
 
-def _check_written_archive(out_path, header, payload, verify_tier):
-    """Post-write check of what's actually on disk, tiered. header/payload
-    are the known-correct in-memory bytes from the encode that just ran (or,
-    in tests, from an independently-known-good reference) - this is what
-    makes the 'quick' tier meaningful without a full re-decode."""
+def _check_written_archive(out_path, header, tail_bytes, total_size, verify_tier):
+    """Post-write check of what's actually on disk, tiered. header/tail_bytes
+    are the known-correct in-memory bytes from the encode that just streamed
+    - only the header and the last TAIL_CHECK_BYTES of the payload are kept
+    in memory (not the whole payload, which may be far larger than RAM) -
+    this is what makes the 'quick' tier meaningful without a full re-decode."""
     if verify_tier == 'memory':
         print('INTEGRITY_SKIPPED (memory tier: only the pre-write in-memory check ran)', flush=True)
         return 0
 
     if verify_tier == 'quick':
-        expected_size = len(header) + len(payload)
         with open(out_path, 'rb') as f:
             f.seek(0, 2)
             actual_size = f.tell()
-            if actual_size != expected_size:
-                print(f'INTEGRITY_FAIL: on-disk size {actual_size} != expected {expected_size} '
+            if actual_size != total_size:
+                print(f'INTEGRITY_FAIL: on-disk size {actual_size} != expected {total_size} '
                       '(likely a truncated write)', flush=True)
                 return 1
             f.seek(0)
             if f.read(len(header)) != header:
                 print('INTEGRITY_FAIL: on-disk header does not match', flush=True)
                 return 1
-            tail_len = min(TAIL_CHECK_BYTES, len(payload))
-            f.seek(-tail_len, 2)
-            if f.read(tail_len) != payload[-tail_len:]:
-                print('INTEGRITY_FAIL: on-disk tail bytes do not match '
-                      '(likely a truncated/corrupted write)', flush=True)
-                return 1
+            tail_len = len(tail_bytes)
+            if tail_len > 0:
+                f.seek(-tail_len, 2)
+                if f.read(tail_len) != tail_bytes:
+                    print('INTEGRITY_FAIL: on-disk tail bytes do not match '
+                          '(likely a truncated/corrupted write)', flush=True)
+                    return 1
         print('INTEGRITY_OK (quick tier: size+header+tail check, does not rule out mid-file bit-rot)',
               flush=True)
         return 0
 
-    # 'full' (default): reread and fully decode the archive as actually persisted on
-    # disk - the only tier that validates against corruption introduced anywhere
-    # during/after the write.
-    decoded, expected_orig_size, expected_checksum = _decode_archive(out_path)
-    if len(decoded) != expected_orig_size or hashlib.sha256(decoded).digest() != expected_checksum:
+    # 'full' (default): stream-decode the whole archive from disk, hashing as we go -
+    # never materializes the whole decoded file in memory - the only tier that
+    # validates against corruption introduced anywhere during/after the write.
+    hasher = hashlib.sha256()
+    total_decoded, _algo, expected_orig_size, expected_checksum = _stream_decode_archive(
+        out_path, hasher.update)
+    if total_decoded != expected_orig_size or hasher.digest() != expected_checksum:
         print('INTEGRITY_FAIL: full on-disk decode did not match', flush=True)
         return 1
     print('INTEGRITY_OK', flush=True)
@@ -278,42 +319,89 @@ def _check_written_archive(out_path, header, payload, verify_tier):
 
 
 def compress(in_path, out_path, algorithm='Zstd', verify_tier='full'):
-    data = Path(in_path).read_bytes()
-    checksum = hashlib.sha256(data).digest()
+    from nvidia import nvcomp
 
-    chunk_payloads = _gpu_encode_chunks(data, algorithm)
-    chunk_sizes = [len(p) for p in chunk_payloads]
-    payload = b''.join(chunk_payloads)
+    chunk_size = _encode_chunk_size(algorithm)
+    orig_size = Path(in_path).stat().st_size
+    bounds = list(_chunk_bounds(orig_size, chunk_size))
 
-    # Mandatory in-memory check, before anything is written to disk - free (no I/O
-    # beyond the local read above), catches encode-logic bugs, refuses to write bad
-    # data regardless of which verify_tier is requested.
-    if _gpu_decode_chunks(chunk_payloads, algorithm) != data:
-        print('COMPRESSION_FAIL: in-memory encode/decode round trip did not match original')
-        return 1
+    codec = _gpu_codec(algorithm)
+    hasher = hashlib.sha256()
+    chunk_sizes = []
+    tail_buffer = bytearray()
 
-    header = _pack_header(algorithm, len(data), checksum, chunk_sizes)
-    with open(out_path, 'wb') as f:
-        f.write(header)
-        f.write(payload)
+    # algorithm/num_chunks are fixed before any encoding happens, so the header's byte
+    # length is already known even though its checksum/chunk_sizes values aren't yet -
+    # reserve that much space with a placeholder, overwrite it in place once the real
+    # values are known. Avoids a second pass over a payload that may be far too large
+    # to buffer and rewrite.
+    placeholder_header = _pack_header(algorithm, orig_size, b'\x00' * 32, [0] * len(bounds))
+
+    try:
+        with open(in_path, 'rb') as fin, open(out_path, 'wb') as fout:
+            fout.write(placeholder_header)
+
+            for start, end in bounds:
+                n = end - start
+                chunk_data = fin.read(n)
+                if len(chunk_data) != n:
+                    raise IOError(f'short read from {in_path}: expected {n} bytes at offset '
+                                   f'{start}, got {len(chunk_data)}')
+                hasher.update(chunk_data)
+
+                src_arr = nvcomp.as_array(chunk_data).cuda()
+                compressed = codec.encode(src_arr)
+
+                # Mandatory in-memory check, per chunk, before that chunk is trusted -
+                # free (no extra I/O), catches encode-logic bugs, fails fast on the
+                # first bad chunk. Mathematically equivalent to one whole-file
+                # comparison (every byte is compared exactly once, in order) - just
+                # computed incrementally so memory stays bounded to one chunk.
+                if bytes(codec.decode(compressed).cpu()) != chunk_data:
+                    print('COMPRESSION_FAIL: in-memory encode/decode round trip did not '
+                          f'match original (chunk at offset {start})', flush=True)
+                    fout.close()
+                    Path(out_path).unlink(missing_ok=True)
+                    return 1
+
+                payload_chunk = bytes(compressed.cpu())
+                fout.write(payload_chunk)
+                chunk_sizes.append(len(payload_chunk))
+
+                tail_buffer.extend(payload_chunk)
+                if len(tail_buffer) > TAIL_CHECK_BYTES:
+                    del tail_buffer[:-TAIL_CHECK_BYTES]
+
+            real_header = _pack_header(algorithm, orig_size, hasher.digest(), chunk_sizes)
+            if len(real_header) != len(placeholder_header):
+                raise AssertionError('header size changed after encoding - internal bug')
+            fout.seek(0)
+            fout.write(real_header)
+    except Exception:
+        Path(out_path).unlink(missing_ok=True)
+        raise
 
     print('COMPRESSION_OK', flush=True)
 
-    return _check_written_archive(out_path, header, payload, verify_tier)
+    total_size = len(real_header) + sum(chunk_sizes)
+    return _check_written_archive(out_path, real_header, bytes(tail_buffer), total_size, verify_tier)
 
 
 def verify(archive_path, force_cpu=False):
     """Standalone integrity check reading only the archive (never the original,
-    and with no in-memory reference) - always a full decode, mirroring `7z t`."""
+    and with no in-memory reference) - always a full, memory-bounded streaming
+    decode, mirroring `7z t`."""
+    hasher = hashlib.sha256()
     try:
-        decoded, orig_size, checksum = _decode_archive(archive_path, force_cpu=force_cpu)
+        total_decoded, _algo, orig_size, checksum = _stream_decode_archive(
+            archive_path, hasher.update, force_cpu=force_cpu)
     except Exception as exc:
         print(f'INTEGRITY_FAIL: {exc}')
         return 1
-    if len(decoded) != orig_size:
-        print(f'INTEGRITY_FAIL: decoded size {len(decoded)} != expected {orig_size}')
+    if total_decoded != orig_size:
+        print(f'INTEGRITY_FAIL: decoded size {total_decoded} != expected {orig_size}')
         return 1
-    if hashlib.sha256(decoded).digest() != checksum:
+    if hasher.digest() != checksum:
         print('INTEGRITY_FAIL: checksum mismatch')
         return 1
     print('INTEGRITY_OK')
@@ -321,15 +409,29 @@ def verify(archive_path, force_cpu=False):
 
 
 def decompress(archive_path, out_path, force_cpu=False):
+    # Stream decoded bytes straight to a .tmp path and rename only after validating -
+    # never expose a partially-written or unverified file under the real out_path,
+    # same "never trust an unverified result" principle used elsewhere in this file.
+    tmp_path = str(out_path) + '.tmp'
+    hasher = hashlib.sha256()
     try:
-        decoded, orig_size, checksum = _decode_archive(archive_path, force_cpu=force_cpu)
+        with open(tmp_path, 'wb') as fout:
+            def sink(chunk):
+                hasher.update(chunk)
+                fout.write(chunk)
+            total_decoded, _algo, orig_size, checksum = _stream_decode_archive(
+                archive_path, sink, force_cpu=force_cpu)
     except Exception as exc:
         print(f'DECOMPRESS_FAIL: {exc}')
+        Path(tmp_path).unlink(missing_ok=True)
         return 1
-    if len(decoded) != orig_size or hashlib.sha256(decoded).digest() != checksum:
-        print('DECOMPRESS_FAIL: integrity check failed, refusing to write output')
+
+    if total_decoded != orig_size or hasher.digest() != checksum:
+        print('DECOMPRESS_FAIL: integrity check failed, refusing to keep output')
+        Path(tmp_path).unlink(missing_ok=True)
         return 1
-    Path(out_path).write_bytes(decoded)
+
+    Path(tmp_path).rename(out_path)
     print('DECOMPRESS_OK')
     return 0
 
@@ -550,9 +652,11 @@ def benchmark(server_src, algorithms=None, network_ref_algorithm='Zstd', network
                       f'{t_write:.1f}s ({mbps_write:.1f} MB/s) [MEASURED]', flush=True)
 
                 t0 = time.perf_counter()
-                decoded, orig_size, chk = _decode_archive(network_out)
+                readback_hasher = hashlib.sha256()
+                total_decoded, _algo, orig_size, chk = _stream_decode_archive(
+                    network_out, readback_hasher.update)
                 t_readback = time.perf_counter() - t0
-                readback_ok = len(decoded) == orig_size and hashlib.sha256(decoded).digest() == chk
+                readback_ok = total_decoded == orig_size and readback_hasher.digest() == chk
                 mbps_readback = archive_size_mb / t_readback if t_readback > 0 else float('inf')
                 print(f'Reference read-back+decode ({network_ref_algorithm}): {t_readback:.1f}s '
                       f'({mbps_readback:.1f} MB/s) [MEASURED] - on-disk correctness: {readback_ok}',
