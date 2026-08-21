@@ -4,7 +4,7 @@ function bhvFiles = findBhvFile(bhvPath)
 % which usually contains behavioral data.
 
 % first check current folder for bhv file
-bhvFiles = dir(fullfile(bhvPath,'\*.mat'));
+bhvFiles = dir(fullfile(bhvPath,'*.mat'));
 fileSelect = false(1, length(bhvFiles));
 for iFiles = 1 : length(bhvFiles)
     try
@@ -16,7 +16,7 @@ end
 
 % if none is found check subfolders
 if sum(fileSelect) == 0
-    bhvFiles = dir(fullfile(bhvPath,'**\*.mat'));
+    bhvFiles = dir(fullfile(bhvPath,'**','*.mat'));
     fileSelect = false(1, length(bhvFiles));
     for iFiles = 1 : length(bhvFiles)
         try
