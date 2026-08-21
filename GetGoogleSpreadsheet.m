@@ -17,7 +17,7 @@ function result = GetGoogleSpreadsheet(DOCID, GID)
 
 loginURL = 'https://www.google.com'; 
 if exist('GID', 'var') && ~isempty(GID)
-    csvURL = sprintf('https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&sheet=%s',...
+    csvURL = sprintf('https://docs.google.com/spreadsheets/d/%s/export?format=csv&gid=%s',...
         DOCID, GID);
 else
     csvURL = ['https://docs.google.com/spreadsheet/ccc?key=' DOCID '&output=csv&pref=2'];
