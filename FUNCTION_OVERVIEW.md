@@ -63,6 +63,7 @@ This is the central reference for functions available in the generalTools reposi
 | `mysigstar` | root | Add significance stars/brackets to plots |
 | `compareMovie` | root | Visualize 3D data stack interactively |
 | `imageScale` | root | Plot image with NaNs as transparent |
+| `adjustCaxis` | root | Set symmetric caxis to [-p, p] from percentile of image data in current axis |
 | `nvline` | root | Vertical line(s) at specified x positions |
 | `nhline` | root | Horizontal line(s) at specified y positions |
 | `freezeColors` | root | Lock colors of plot (allows multiple colormaps per figure) |

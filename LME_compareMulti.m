@@ -1,5 +1,5 @@
 function [pVal_cStim, tStat_cStim, fullmodel, modelCompare, dataUsed] = ...
-    LME_compareMulti(dataIn, conditionID, randomVar, modelType, transformType)
+    LME_compareMulti(dataIn, conditionID, randomVar, modelType, transformType, covariates)
 % Compare measurements across conditions using a mixed-effects model.
 %
 % INPUTS
@@ -8,21 +8,28 @@ function [pVal_cStim, tStat_cStim, fullmodel, modelCompare, dataUsed] = ...
 %   randomVar      : Nx1 or NxK array / cell array of random-effect grouping variables
 %   modelType      : 'normal' (default) or 'gamma'
 %   transformType  : 'none' (default) or 'asinh'
+%   covariates     : Nx1 or NxM matrix of continuous nuisance covariates (fixed effects).
+%                    Each column is added as a fixed-effect term to control for its
+%                    influence on the outcome. Pass [] to omit.
 %
 % MODEL
-%   cData ~ cStims + (1|randomVar1) + (1|randomVar2) + ...
+%   cData ~ cStims + [cov1 + cov2 + ...] + (1|randomVar1) + (1|randomVar2) + ...
 %
 % NOTES
 % - 'normal' uses fitlme
 % - 'gamma' uses fitglme with log link
 % - Gamma requires strictly positive data
 % - 'asinh' is useful for skewed data containing negative and positive values
+% - Covariates are centered (zero-mean) before fitting to improve numerical stability
 
 if nargin < 4 || isempty(modelType)
     modelType = 'normal';
 end
 if nargin < 5 || isempty(transformType)
     transformType = 'none';
+end
+if nargin < 6
+    covariates = [];
 end
 
 dataIn = dataIn(:);
@@ -57,7 +64,20 @@ end
 cStims = categorical(conditionID);
 tbl = table(dataUsed, cStims, 'VariableNames', {'cData','cStims'});
 
+% add continuous covariates as fixed effects (centered)
 modelString = 'cData ~ cStims';
+if ~isempty(covariates)
+    covariates = double(covariates);
+    if isvector(covariates)
+        covariates = covariates(:);
+    end
+    for i = 1:size(covariates, 2)
+        varName = ['cov' num2str(i)];
+        tbl.(varName) = covariates(:,i) - mean(covariates(:,i), 'omitnan');
+        modelString = [modelString ' + ' varName];
+    end
+end
+
 for i = 1:size(randomVar,2)
     varName = ['randomVar' num2str(i)];
     tbl.(varName) = categorical(randomVar(:,i));

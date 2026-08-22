@@ -68,8 +68,6 @@ end
 if ~isempty(cPoints)
     nPoints  = size(cPoints, 3);
     jitWidth = groupwidth / nbars * 0.4;
-    jit      = linspace(-jitWidth, jitWidth, max(nPoints, 2));
-    if nPoints == 1, jit = 0; end
     for i = 1:nbars
         for iGrp = 1:ngroups
             if perGroupColor
@@ -79,8 +77,14 @@ if ~isempty(cPoints)
             end
             yvals = squeeze(cPoints(iGrp, i, :));
             ok    = ~isnan(yvals);
-            if any(ok)
-                plot(xPos(iGrp,i) + jit(ok), yvals(ok)', 'o', ...
+            nOk   = sum(ok);
+            if nOk > 0
+                if nOk == 1
+                    ptJit = 0;
+                else
+                    ptJit = (rand(1, nOk) - 0.5) * jitWidth * 2;
+                end
+                plot(xPos(iGrp,i) + ptJit, yvals(ok)', 'o', ...
                     'Color',           ptColor, ...
                     'MarkerFaceColor', ptColor, ...
                     'MarkerSize',      4, ...
