@@ -98,11 +98,18 @@ inline log lines that are easy to miss in a long transfer log. Added "Mismatched
 "Suspected-truncated" counters to the final summary line (both the in-log [INFO] line and the
 console "Done." line), plus an explicit "review recommended" call-to-action line whenever either
 count is nonzero - a bare number next to "Errors: 0" is too easy to skim past.
+1.1.1 (2026-08-11): Fixed empty target folders reappearing despite the 1.0.2 fix. ensure_dir(dst_file.parent, ...)
+was still being called for every transfer candidate up front, before the manifest-skip / mismatch
+checks decided whether a file would actually be written - so a directory whose files were all
+SKIP-MANIFEST'd (e.g. previously archived and cleared from the target) still got its folder shell
+recreated empty this run. ensure_dir() now only runs immediately before the actual copy/move write,
+after all skip decisions are made. Found via 2p_PuffyPenguin/479's 20260506_2/suite2p/{combined,plane0-3}
+showing up as empty folders on the target while the source still had full suite2p output files.
 """
 
 from __future__ import annotations
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__  = "Simon Musall"
 __email__   = "s.musall@fz-juelich.de"
 
@@ -866,8 +873,6 @@ def transfer_tree(
                     errors += 1
                     continue
 
-                ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
-
                 src_size, src_mtime = safe_stat_size_mtime(src_file)
                 if src_size is None or src_mtime is None:
                     logf(f"[ERROR] Cannot stat: {src_file}")
@@ -1021,6 +1026,7 @@ def transfer_tree(
                                     continue
 
                 # Destination does not exist (or we deleted it due to overwrite)
+                ensure_dir(dst_file.parent, dry_run=dry_run, logf=logf)
                 if do_move:
                     if dry_run:
                         logf(f"[MOVE] {src_file} -> {dst_file} ({int(src_size) / 1024**3:.3f} GB)")
