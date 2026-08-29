@@ -169,6 +169,8 @@ This is the central reference for functions available in the generalTools reposi
 | `getRecordingsFromGooglesheet` | root | Select specific recordings from Google Sheet |
 | `loadSessionData` | Playground/Mattia | Load behavioral session data |
 | `loadVideoData` | Playground/Mattia | Load video data from session |
+| `docx_to_lossless_pdf.py` | root | Convert .docx to PDF via Word COM (exact layout) then replace JPEG-compressed images with lossless originals from the docx; run from interactive terminal. **Preferred** over libreOffice_printToPDF.py — LibreOffice can corrupt headers and layout. |
+| `libreOffice_printToPDF.py` | root | Convert .docx to PDF using LibreOffice headless with lossless image settings; simpler but may corrupt headers/formatting (e.g. different-first-page headers). Use docx_to_lossless_pdf.py instead when formatting must be exact. |
 
 ---
 
