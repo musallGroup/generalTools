@@ -16,8 +16,9 @@ function out = nanstd(x, w, dim)
 %   out  - standard deviation with NaN values ignored
 
 if nargin < 2 || isempty(w)
-    out = std(x, 'omitnan');
-elseif nargin < 3
+    w = 0;
+end
+if nargin < 3 || isempty(dim)
     out = std(x, w, 'omitnan');
 else
     out = std(x, w, dim, 'omitnan');
